@@ -2,7 +2,7 @@
 
 > **v1** - This setup works but has rough edges. See "Mistakes we made" below.
 
-> **Excited about [Happier](https://github.com/happier-dev/happier)!** The Happy app isn't actively maintained, but Leroy is building a fork with many improvements. I'll switch to that once it's released.
+> **Excited about [Happier](https://github.com/happier-dev/happier)!** The Happy app isn't actively maintained, but [@leeroy](https://github.com/leeroy) is building a fork with many improvements. I'll switch to that once it's released.
 
 Sync two machines so Claude sessions work from anywhere - your laptop, a home server, or your phone.
 
