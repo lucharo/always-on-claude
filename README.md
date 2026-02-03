@@ -35,10 +35,10 @@ flowchart LR
 
 1. **Tailscale** creates a secure mesh network between devices
 2. **Mutagen** syncs `~/Projects` and `~/.claude` bidirectionally
-3. **Bind mount** on Linux makes paths identical (`/Users/<username>/...` on both machines)
+3. **Bind mount** on Linux makes paths identical - so Claude conversations (stored in `~/.claude/projects/-Users-<username>-...`) use the same keys on both machines
 4. **Happy CLI** lets you start Claude sessions from your phone
 
-The bind mount is the trick. Claude stores sessions by path - if paths match, sessions are portable.
+The bind mount is the trick. Claude stores conversations keyed by project path (e.g., `-Users-yourname-Projects-foo`). Same path on both machines = same conversation accessible from either.
 
 > **Note:** `arch-lenovo` is just the hostname of my server - replace with your own machine's hostname throughout.
 
