@@ -6,26 +6,35 @@
 
 Sync two machines so Claude sessions work from anywhere - your laptop, a home server, or your phone.
 
+## Context
+
+This repurposes a 2020 ThinkPad running Arch Linux as a home server. It's not a cloud VM or purpose-built server. Every machine is different - partition layouts, usernames, network configs. This guide documents the core concepts; adapt to your setup.
+
+**Want to set this up?** Point Claude to this repo - it includes skills that can help. But expect to adapt things to your specific machine.
+
 ```mermaid
 flowchart LR
-    subgraph MacBook["MacBook (primary)"]
-        MP["/Users/.../Projects"]
-        MC["~/.claude"]
+    subgraph Tailscale["Tailscale (secure mesh network)"]
+        subgraph MacBook["MacBook (primary)"]
+            MP["/Users/.../Projects"]
+            MC["~/.claude"]
+        end
+
+        subgraph Server["server (always-on)"]
+            SP["/Users/.../Projects"]
+            SC["~/.claude"]
+        end
+
+        subgraph Phone
+            H["Happy App"]
+        end
+
+        MP <-->|Mutagen| SP
+        MC <-->|Mutagen| SC
+        H -->|starts sessions| Server
     end
 
-    subgraph Server["arch-lenovo (always-on)"]
-        SP["/Users/.../Projects"]
-        SC["~/.claude"]
-    end
-
-    subgraph Phone
-        H["Happy App"]
-    end
-
-    MP <-->|Mutagen| SP
-    MC <-->|Mutagen| SC
-    H -->|starts sessions| Server
-
+    style Tailscale fill:#f5f5f5,stroke:#333
     style MacBook fill:#e1f5fe
     style Server fill:#f3e5f5
     style Phone fill:#e8f5e9
@@ -40,47 +49,27 @@ flowchart LR
 
 The bind mount is the trick. Claude stores conversations keyed by project path (e.g., `-Users-yourname-Projects-foo`). Same path on both machines = same conversation accessible from either.
 
-> **Note:** `arch-lenovo` is just the hostname of my server - replace with your own machine's hostname throughout.
-
 ## Session portability
 
-```mermaid
-flowchart TB
-    subgraph works["What works"]
-        direction TB
-        W1["Phone -> Server -> MacBook"]
-        W2["MacBook -> Server (SSH)"]
-    end
+- **Phone → Server → MacBook**: Works. Happy creates session at `/Users/...`, Mutagen syncs it, same path on MacBook.
+- **MacBook → Server (SSH)**: Works. Same paths on both machines = same conversation keys.
+- **MacBook → Phone**: Doesn't work. Happy can only see sessions it started.
 
-    subgraph broken["What doesn't"]
-        direction TB
-        B1["MacBook -> Phone directly"]
-    end
-
-    works --> OK["Same path = same session key"]
-    broken --> NOPE["Happy can only see sessions it started"]
-
-    style works fill:#c8e6c9
-    style broken fill:#ffcdd2
-```
-
-| Scenario | Works? | Why |
-|----------|--------|-----|
-| Start on phone, continue on laptop | Yes | Happy creates session at `/Users/...`, Mutagen syncs it |
-| Start on laptop, continue via SSH | Yes | Same paths on both machines |
-| Start on laptop, continue on phone | No | Happy can't see sessions it didn't start |
+**Note:** Even when you can't continue a conversation directly, the files always sync. You can start a new session and catch up - Claude will see all your code changes.
 
 ## The bind mount
 
-Linux doesn't have `/Users`. We create it, but store the data on the big partition:
+My ThinkPad was set up as a personal computer, not a server. The root partition (`/`) is only 25GB while `/home` has 192GB. Be careful mounting things to root - you'll run out of space.
+
+**Solution:** Store data on the big partition, bind mount to create the `/Users/...` path:
 
 ```mermaid
 flowchart TB
-    subgraph home["/home partition (192GB)"]
+    subgraph home["/home partition (192GB) - where data actually lives"]
         DATA["/home/${USER}_macpath/Projects"]
     end
 
-    subgraph root["/ partition (25GB)"]
+    subgraph root["/ partition (25GB) - just a mount point"]
         MOUNT["/Users/${MACOS_USER}/Projects"]
     end
 
@@ -90,7 +79,9 @@ flowchart TB
     style root fill:#fff3e0
 ```
 
-A symlink won't work - programs resolve symlinks and see `/home/...`. A bind mount makes the directory appear real at `/Users/...`.
+**Where's the data?** Actually stored in `/home/${USER}_macpath/`. The bind mount makes it *appear* at `/Users/...` so paths match macOS.
+
+**Why not a symlink?** Programs resolve symlinks and see `/home/...`. A bind mount makes the directory appear real at `/Users/...` - Claude sees the same path on both machines.
 
 ## Quick reference
 
@@ -190,12 +181,6 @@ mutagen sync create --name=claude-config --mode=two-way-safe \
 2. **Put /Users on root partition** - filled up 25GB fast, should've used /home
 3. **Used symlink instead of bind mount** - Happy showed wrong paths, sessions weren't portable
 4. **Forgot to clean old laptop** - 12GB movie, 3.5GB pacman cache ate disk space
-
-## Context
-
-This repurposes a 2020 ThinkPad running Arch Linux. It's not a cloud VM or purpose-built server. The partition layout (25GB root, 192GB home) caused headaches until we figured out the bind mount approach.
-
-Happy CLI is lightly maintained. It can't list sessions it didn't start, so laptop-to-phone handoff doesn't work yet.
 
 ## Alternatives
 
