@@ -1,613 +1,193 @@
 # Always-On Claude
 
-Two machines (MacBook + arch-lenovo) with synchronized development environments, enabling Claude Code sessions from anywhere.
+Sync two machines so Claude sessions work from anywhere - your laptop, a home server, or your phone.
 
-> **Note:** This setup repurposes a personal Arch Linux laptop as a home server. It's not a fresh cloud VM or purpose-built server. Your mileage may vary - this documents what worked (and what went wrong) for this specific setup.
+```mermaid
+flowchart LR
+    subgraph MacBook["MacBook (primary)"]
+        MP[~/Projects]
+        MC[~/.claude]
+    end
 
-## Our Hardware
+    subgraph Server["arch-lenovo (always-on)"]
+        SP[/Users/.../Projects]
+        SC[~/.claude]
+    end
 
-**Server (arch-lenovo):**
-- Lenovo ThinkPad (2020-era)
-- Arch Linux (rolling release)
-- 25 GB root partition (`/dev/sda3`)
-- 192 GB home partition (`/dev/sda4`)
-- Runs 24/7 with lid closed, WiFi + Tailscale
+    subgraph Phone
+        H[Happy App]
+    end
 
-**Client (MacBook):**
-- MacBook Pro (primary development machine)
-- macOS
-- Runs Mutagen daemon for sync
+    MP <-->|Mutagen| SP
+    MC <-->|Mutagen| SC
+    H -->|starts sessions| Server
 
-## Requirements Checklist
-
-### Core Requirements
-
-| # | Requirement | Solution | Status |
-|---|-------------|----------|--------|
-| 1 | Start Claude session from phone in any project folder | Happy daemon on server (`happy claude` in project dir) | ✅ Validated |
-| 2 | Resume conversation on laptop that was started on server | Bind mount makes paths identical (`/Users/luischavesrodriguez/...` on both machines) | 🧪 Testing |
-| 3 | Continue conversation from server that started on laptop | Same bind mount solution - paths match so session keys match | 🧪 Testing |
-| 4 | Continue conversation from phone that started on laptop | Would require: (a) starting laptop sessions with Happy, or (b) Happy feature to list/resume any conversation | ❌ Missing feature in Happy |
-
-### Secondary Requirements
-
-| # | Requirement | Solution | Status |
-|---|-------------|----------|--------|
-| 5 | Create git worktrees from phone | Happy does not support worktree creation | ❌ Missing feature in Happy |
-
-### Notes on Happy CLI
-
-Happy (`happy-coder`) appears to be lightly maintained. Known limitations:
-- Cannot list/resume arbitrary conversations (only those started via Happy)
-- No worktree management
-- Phone app may have sync delays
-
-Consider contributing to Happy or building alternatives if these limitations become blocking.
-
----
-
-## Architecture
-
-```
-MacBook (Primary)                    arch-lenovo (Always-On Server)
-├── ~/Projects/ ◄────────────────────► /Users/luischavesrodriguez/Projects/
-│   (native path)       Mutagen           (bind mount from /home)
-│                     bidirectional
-├── ~/.claude/ ◄─────────────────────► /home/luis/.claude/
-│   (except CLAUDE.md)  Mutagen        (except CLAUDE.md)
-│
-└── Mutagen daemon                   └── SSH access via Tailscale
+    style MacBook fill:#e1f5fe
+    style Server fill:#f3e5f5
+    style Phone fill:#e8f5e9
 ```
 
-### Bind Mount Explained
+## How it works
 
-```
-Server Storage Layout:
-┌─────────────────────────────────────────────────────────────────┐
-│ /dev/sda4 (/home) - 192GB                                       │
-│  └── /home/luischavesrodriguez_macpath/                         │
-│       └── Projects/  ◄── actual data lives here                 │
-└─────────────────────────────────────────────────────────────────┘
-          │
-          │ bind mount (not symlink!)
-          ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ /dev/sda3 (/) - 25GB                                            │
-│  └── /Users/luischavesrodriguez/  ◄── appears as real directory │
-│       └── Projects/                                             │
-└─────────────────────────────────────────────────────────────────┘
+1. **Tailscale** creates a secure mesh network between devices
+2. **Mutagen** syncs `~/Projects` and `~/.claude` bidirectionally
+3. **Bind mount** on Linux makes paths identical (`/Users/luischavesrodriguez/...` on both machines)
+4. **Happy CLI** lets you start Claude sessions from your phone
 
-Why bind mount?
-- Symlink: Programs see "/home/..." (resolved path) ❌
-- Bind mount: Programs see "/Users/..." (mount path) ✅
+The bind mount is the trick. Claude stores sessions by path - if paths match, sessions are portable.
 
-Key point: Bind mount ≠ copy. It's like having two doors to the same room.
-```
+## Session portability
 
-### Session Portability Flow
+```mermaid
+flowchart TB
+    subgraph works["What works"]
+        direction TB
+        W1["Phone -> Server -> MacBook"]
+        W2["MacBook -> Server (SSH)"]
+    end
 
-```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                     SESSION PORTABILITY                                   │
-├──────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  ✅ WORKS: Start on Server (Happy) → Continue on MacBook (Claude)        │
-│  ┌─────────┐                              ┌─────────┐                    │
-│  │  Phone  │ ──Happy──► Server creates    │ MacBook │                    │
-│  │         │           session at         │         │                    │
-│  └─────────┘           /Users/.../foo     └─────────┘                    │
-│                              │                  │                        │
-│                              │   Mutagen sync   │                        │
-│                              └────────►─────────┘                        │
-│                                             │                            │
-│                              Session key: -Users-luischavesrodriguez-... │
-│                              Same on both machines ✓                     │
-│                                                                          │
-├──────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  ✅ WORKS: Start on MacBook (Claude) → Continue on Server (SSH)          │
-│  ┌─────────┐         Mutagen sync         ┌─────────┐                    │
-│  │ MacBook │ ─────────────►───────────────│ Server  │                    │
-│  │         │  session + files sync        │         │                    │
-│  └─────────┘                              └─────────┘                    │
-│       │                                        │                         │
-│       └── /Users/.../foo ══════════════════════┘                         │
-│           Same path, same session key ✓                                  │
-│                                                                          │
-├──────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  ❌ NOT SUPPORTED: Start on MacBook → Continue on Phone (Happy)          │
-│  ┌─────────┐                              ┌─────────┐                    │
-│  │ MacBook │                              │  Phone  │                    │
-│  │         │                              │         │                    │
-│  └─────────┘                              └─────────┘                    │
-│       │                                        │                         │
-│       └── Session created                      └── Happy can only see    │
-│           locally                                  sessions it started   │
-│                                                                          │
-│  Happy limitation: Cannot list/resume arbitrary Claude sessions          │
-│                                                                          │
-└──────────────────────────────────────────────────────────────────────────┘
+    subgraph broken["What doesn't"]
+        direction TB
+        B1["MacBook -> Phone directly"]
+    end
+
+    works --> OK["Same path = same session key"]
+    broken --> NOPE["Happy can only see sessions it started"]
+
+    style works fill:#c8e6c9
+    style broken fill:#ffcdd2
 ```
 
-### Important: Use Correct Path in Happy
+| Scenario | Works? | Why |
+|----------|--------|-----|
+| Start on phone, continue on laptop | Yes | Happy creates session at `/Users/...`, Mutagen syncs it |
+| Start on laptop, continue via SSH | Yes | Same paths on both machines |
+| Start on laptop, continue on phone | No | Happy can't see sessions it didn't start |
 
-When starting a session from Happy, **always use the full path**:
+## The bind mount
 
-```
-/Users/luischavesrodriguez/Projects/yourproject
-```
+Linux doesn't have `/Users`. We create it, but store the data on the big partition:
 
-Do NOT use:
-- `~/Projects/...` (expands to /home/luis/...)
-- `/home/luischavesrodriguez_macpath/...` (won't match MacBook)
+```mermaid
+flowchart TB
+    subgraph home["/home partition (192GB)"]
+        DATA["/home/luischavesrodriguez_macpath/Projects"]
+    end
 
-## What Gets Synced
+    subgraph root["/ partition (25GB)"]
+        MOUNT["/Users/luischavesrodriguez/Projects"]
+    end
 
-| Path | Synced? | Notes |
-|------|---------|-------|
-| ~/Projects | YES | Bidirectional, excludes build artifacts |
-| ~/.claude | YES | Conversations, settings, plugins, skills |
-| ~/.claude/CLAUDE.md | NO | Machine-specific instructions |
+    DATA -->|"bind mount"| MOUNT
 
-### Excluded from sync (rebuild locally)
-- `node_modules/`, `.venv/`, `venv/`, `__pycache__/`
-- `.pixi/`, `.cache/`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`
-- `target/`, `dist/`, `build/`, `.next/`
-- `.DS_Store`, `*.log`, `.env`, `.env.local`
-- `courses/AWS-SAA-SAAC003-cantrill/` (large course content)
-
-## Path Mapping
-
-Both machines must resolve `~/Projects` to `/Users/luischavesrodriguez/Projects` for Claude session compatibility:
-
-- **MacBook**: Native path (already `/Users/luischavesrodriguez/Projects`)
-- **arch-lenovo**: Symlink `~/Projects -> /Users/luischavesrodriguez/Projects`
-
-This ensures Claude session keys match across machines.
-
-## Infrastructure
-
-| Component | Purpose |
-|-----------|---------|
-| Tailscale | Secure mesh network (access from anywhere) |
-| Happy CLI | Phone notifications + session management |
-| Mutagen | Bidirectional file sync |
-| SSH | Remote access to arch-lenovo |
-
-## Access Patterns
-
-```bash
-# From MacBook (local network)
-ssh arch-lenovo
-
-# From MacBook (via Tailscale, from anywhere)
-ssh arch-lenovo-ts
-
-# From phone
-# Use Happy app - sessions visible automatically
-
-# Start a new session on arch-lenovo
-ssh arch-lenovo 'cd ~/Projects/myproject && happy claude'
+    style home fill:#e8f5e9
+    style root fill:#fff3e0
 ```
 
-## Mutagen Sync Commands
+A symlink won't work - programs resolve symlinks and see `/home/...`. A bind mount makes the directory appear real at `/Users/...`.
+
+## Quick reference
 
 ```bash
 # Check sync status
 mutagen sync list
 
-# Pause sync (REQUIRED before path changes)
+# SSH to server
+ssh arch-lenovo          # local network
+ssh arch-lenovo-ts       # via Tailscale
+
+# Start session from phone
+# Just use Happy app - sessions appear automatically
+```
+
+## Sync safety
+
+**Pause sync before changing paths:**
+
+```bash
 mutagen sync pause projects
 mutagen sync pause claude-config
-
-# Resume sync
+# make changes
 mutagen sync resume projects
 mutagen sync resume claude-config
-
-# Terminate and recreate (if broken)
-mutagen sync terminate projects
-# Then recreate with proper excludes
 ```
 
-## File Sync Safety Rules
+Moving directories while sync runs will break things.
 
-**CRITICAL: These rules prevent data loss and sync corruption**
+## What syncs
 
-### NEVER do while sync is running:
-- Move or rename synced directories (`mv ~/Projects` anywhere)
-- Create symlinks in place of synced directories
-- Run scripts that bulk-move files in synced locations
-- Change the path structure of synced roots
+| Path | Synced | Notes |
+|------|--------|-------|
+| ~/Projects | Yes | Excludes node_modules, .venv, build artifacts |
+| ~/.claude | Yes | Conversations, plugins, skills |
+| ~/.claude/CLAUDE.md | No | Machine-specific |
 
-### ALWAYS do before ANY path changes:
-1. PAUSE the sync first: `mutagen sync pause <name>`
-2. Verify it's paused: `mutagen sync list`
-3. Make your changes
-4. CAREFULLY resume: `mutagen sync resume <name>`
-5. Monitor for conflicts: `mutagen sync list`
+## Setup
 
-### If something goes wrong:
-- Files are rarely deleted by sync tools in "safe" modes
-- Check both endpoints - data is usually still there
-- Don't panic, don't run more commands - stop and assess
+### Server (Arch Linux)
 
-## Initial Setup (for reference)
-
-### 1. Create directory structure on arch-lenovo
 ```bash
-sudo mkdir -p /Users/luischavesrodriguez/Projects
-sudo chown luis:wheel /Users/luischavesrodriguez/Projects
-ln -s /Users/luischavesrodriguez/Projects ~/Projects
+# Install and enable services
+sudo pacman -S tailscale openssh
+sudo systemctl enable --now sshd tailscaled
+sudo tailscale up
+
+# Create bind mount for path compatibility
+sudo mkdir -p /home/${USER}_macpath/Projects
+sudo mkdir -p /Users/luischavesrodriguez
+sudo mount --bind /home/${USER}_macpath /Users/luischavesrodriguez
+echo "/home/${USER}_macpath /Users/luischavesrodriguez none bind 0 0" | sudo tee -a /etc/fstab
+
+# Install Claude Code via nvm (not system node)
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+nvm install 22
+npm install -g @anthropic-ai/claude-code happy-coder
 ```
 
-### 2. Initial file transfer (before enabling sync)
+### Client (macOS)
+
 ```bash
-# From MacBook - copy files to arch-lenovo
+# Install Mutagen
+brew install mutagen-io/mutagen/mutagen
+mutagen daemon start
+
+# Initial transfer (do this BEFORE enabling sync)
 scp -r ~/Projects/* arch-lenovo:/Users/luischavesrodriguez/Projects/
-```
 
-### 3. Enable Mutagen sync
-```bash
-# Projects sync
-mutagen sync create \
-  --name=projects \
-  --mode=two-way-safe \
-  --ignore="node_modules" \
-  --ignore=".venv" \
-  --ignore="venv" \
-  --ignore="__pycache__" \
-  --ignore=".pixi" \
-  --ignore=".cache" \
-  --ignore=".pytest_cache" \
-  --ignore=".mypy_cache" \
-  --ignore=".ruff_cache" \
-  --ignore="target" \
-  --ignore="dist" \
-  --ignore="build" \
-  --ignore=".next" \
-  --ignore=".DS_Store" \
-  --ignore="*.log" \
-  --ignore=".env" \
-  --ignore=".env.local" \
-  --ignore="courses/AWS-SAA-SAAC003-cantrill" \
+# Create syncs
+mutagen sync create --name=projects --mode=two-way-safe \
+  --ignore="node_modules" --ignore=".venv" --ignore="dist" \
+  --ignore="build" --ignore=".next" --ignore=".cache" \
   ~/Projects arch-lenovo:/Users/luischavesrodriguez/Projects
 
-# Claude config sync
-mutagen sync create \
-  --name=claude-config \
-  --mode=two-way-safe \
+mutagen sync create --name=claude-config --mode=two-way-safe \
   --ignore="CLAUDE.md" \
   ~/.claude arch-lenovo:/home/luis/.claude
 ```
 
 ## Troubleshooting
 
-### Sync stuck in error loop
-```bash
-mutagen sync terminate projects
-# Wait, then recreate
-```
+**Sync stuck:** `mutagen sync terminate projects` then recreate
 
-### Conflicts
-```bash
-mutagen sync list  # Shows conflict count
-# Manually resolve by choosing which version to keep
-```
+**Conflicts:** `mutagen sync list` shows them - pick a side and delete the other
 
-### Lost connection
-- Check Tailscale: `tailscale status`
-- Check arch-lenovo is awake: `ping arch-lenovo`
-- SSH directly: `ssh arch-lenovo-ts`
+**Can't connect:** Check `tailscale status`, try `ping arch-lenovo`
 
-### Missing dependencies after sync
-Dependencies (node_modules, .venv, etc.) don't sync. Rebuild locally:
-```bash
-npm install     # or bun install
-uv sync         # or pip install -r requirements.txt
-pixi install    # for pixi projects
-```
+**Missing deps after sync:** node_modules and .venv don't sync - rebuild locally
 
----
+## Mistakes we made
 
-## Understanding Linux Partitions
+1. **Moved directories while sync was running** - Claude session crashed, Mutagen errored
+2. **Put /Users on root partition** - filled up 25GB fast, should've used /home
+3. **Used symlink instead of bind mount** - Happy showed wrong paths, sessions weren't portable
+4. **Forgot to clean old laptop** - 12GB movie, 3.5GB pacman cache ate disk space
 
-If you're repurposing a personal Linux machine, you need to understand its partition layout.
+## Context
 
-### Root Partition (`/`)
+This repurposes a 2020 ThinkPad running Arch Linux. It's not a cloud VM or purpose-built server. The partition layout (25GB root, 192GB home) caused headaches until we figured out the bind mount approach.
 
-The root partition contains:
-- `/usr` - System programs and libraries
-- `/var` - Variable data (logs, package cache)
-- `/opt` - Optional/third-party software
-- `/etc` - System configuration
-- Any directory NOT on a separate partition
+Happy CLI is lightly maintained. It can't list sessions it didn't start, so laptop-to-phone handoff doesn't work yet.
 
-This is protected space for the system. On our machine: **25 GB** (small!)
+## Alternatives
 
-### Home Partition (`/home`)
-
-The home partition contains:
-- `/home/username/` - User files, downloads, documents
-
-Typically much larger. On our machine: **192 GB**
-
-### The Problem We Hit
-
-We created `/Users/luischavesrodriguez/Projects` for macOS path compatibility. But `/Users` landed on the **root partition** (25 GB), not `/home` (192 GB).
-
-**Solution:** Move data to `/home` and use a **bind mount** (not symlink):
-```bash
-mv /Users/luischavesrodriguez /home/luischavesrodriguez_macpath
-mkdir /Users/luischavesrodriguez
-mount --bind /home/luischavesrodriguez_macpath /Users/luischavesrodriguez
-# Make permanent:
-echo '/home/luischavesrodriguez_macpath /Users/luischavesrodriguez none bind 0 0' >> /etc/fstab
-```
-
-**Why bind mount instead of symlink?** Symlinks get "resolved" by programs - Claude would see `/home/...` instead of `/Users/...`, breaking session portability. Bind mounts make the directory appear as a real location.
-
-### Check Your Partitions
-
-```bash
-# See partition layout
-df -h
-
-# See what's eating space
-du -sh /* 2>/dev/null | sort -hr | head -10
-```
-
----
-
-## Postmortem: What Went Wrong
-
-This setup had several issues. Documenting them so you don't repeat our mistakes.
-
-### Issue 1: Running Scripts While Sync Was Active
-
-**What happened:** Ran a shell script that moved `~/Projects` to a different location while Mutagen was actively syncing.
-
-**Result:** Mutagen lost track of the sync root, started erroring. The Claude Code session's working directory vanished mid-session, breaking the shell.
-
-**Lesson:** ALWAYS pause sync before ANY path changes.
-
-### Issue 2: Partition Confusion
-
-**What happened:** Created `/Users/luischavesrodriguez/Projects` assuming it would have plenty of space. Didn't realize `/Users` was on the tiny 25 GB root partition, not the 192 GB `/home` partition.
-
-**Result:** Root partition filled to 100%, couldn't install packages, sync struggled.
-
-**Lesson:** Check `df -h` before deciding where to put large directories. On Linux, only `/home` typically has lots of space.
-
-### Issue 3: Sudo Not Working
-
-**What happened:** User was in the `wheel` group but couldn't run `sudo`. Password kept being rejected.
-
-**Root cause:** Two possibilities:
-1. The `%wheel` line in `/etc/sudoers` was commented out (Arch default)
-2. User password vs root password confusion
-
-**Solution:** Log in as root (`su -`) and ensure `/etc/sudoers` has:
-```
-%wheel ALL=(ALL:ALL) ALL
-```
-
-**Lesson:** On a fresh Arch install, sudo isn't enabled by default. Fix it early.
-
-### Issue 4: Accumulated Cruft from Personal Use
-
-**What happened:** This was a personal laptop before becoming a server. It had:
-- 12 GB movie torrent in Downloads
-- 3.5 GB pacman cache (never cleaned)
-- Discord, Zoom, Brave, Bisq, Tor browser installed
-- Old WiFi capture files, password wordlists
-
-**Result:** Disk filled up faster than expected.
-
-**Lesson:** Clean up personal files before repurposing as a server:
-```bash
-# Clean pacman cache (keep only 1 version)
-sudo paccache -rk1
-
-# Remove unused packages
-sudo pacman -Rns discord zoom bisq brave-bin tor-browser
-
-# Check for large files
-find ~ -type f -size +100M -exec ls -lh {} \;
-```
-
-### Issue 5: Kernel Updates Require Restart
-
-**What happened:** After `pacman -Syu`, some things broke until reboot.
-
-**Lesson:** On Arch, kernel updates are live but modules may not load until restart. After major updates:
-```bash
-sudo reboot
-```
-
----
-
-## What Could Go Wrong (Checklist)
-
-Before and during setup, watch for these:
-
-### Before Starting
-- [ ] Check partition layout (`df -h`) - know where space is
-- [ ] Know your root password (different from user password!)
-- [ ] Verify sudo works (`sudo whoami`)
-- [ ] Clean up personal files if repurposing a personal machine
-- [ ] Update system and reboot (`sudo pacman -Syu && sudo reboot`)
-
-### During Sync Setup
-- [ ] Pause sync before ANY path changes
-- [ ] Use SCP for initial transfer (no sync running = no conflicts)
-- [ ] Only enable Mutagen AFTER both sides are stable
-- [ ] Check for conflicts after sync: `mutagen sync list`
-
-### Ongoing
-- [ ] Monitor disk space: `df -h`
-- [ ] Rebuild dependencies after syncing new projects
-- [ ] Keep pacman cache clean: `sudo paccache -rk1` monthly
-
----
-
-## Step-by-Step Setup Scripts
-
-### On the Server (arch-lenovo)
-
-```bash
-#!/bin/bash
-# server-setup.sh - Run this on the always-on machine
-
-set -e
-
-echo "=== 1. System Update ==="
-sudo pacman -Syu
-
-echo "=== 2. Install Required Packages ==="
-sudo pacman -S --needed tailscale openssh
-
-echo "=== 3. Enable Services ==="
-sudo systemctl enable --now sshd
-sudo systemctl enable --now tailscaled
-
-echo "=== 4. Connect to Tailscale ==="
-sudo tailscale up
-
-echo "=== 5. Create Directory Structure ==="
-# Create /Users path for macOS compatibility, but on /home partition
-sudo mkdir -p /home/luischavesrodriguez_macpath/Projects
-sudo chown $USER:wheel /home/luischavesrodriguez_macpath
-sudo mkdir -p /Users/luischavesrodriguez
-
-# Use bind mount (NOT symlink) - critical for session portability
-sudo mount --bind /home/luischavesrodriguez_macpath /Users/luischavesrodriguez
-echo '/home/luischavesrodriguez_macpath /Users/luischavesrodriguez none bind 0 0' | sudo tee -a /etc/fstab
-
-# Note: Do NOT create ~/Projects symlink - use /Users/luischavesrodriguez/Projects directly
-# to ensure correct session paths for Claude
-
-echo "=== 6. Install Claude Code ==="
-# Requires Node.js via nvm (not system node - avoids ICU conflicts)
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
-source ~/.bashrc
-nvm install 22
-npm install -g @anthropic-ai/claude-code
-
-echo "=== 7. Install Happy CLI ==="
-npm install -g happy-coder
-
-echo "=== Done! ==="
-echo "Now run the MacBook setup and start the Mutagen sync."
-```
-
-### On the Client (MacBook)
-
-```bash
-#!/bin/bash
-# client-setup.sh - Run this on your MacBook
-
-set -e
-
-echo "=== 1. Install Mutagen ==="
-brew install mutagen-io/mutagen/mutagen
-
-echo "=== 2. Start Mutagen Daemon ==="
-mutagen daemon start
-
-echo "=== 3. Add SSH Config ==="
-cat >> ~/.ssh/config << 'EOF'
-
-Host arch-lenovo
-    HostName arch-lenovo
-    User luis
-
-Host arch-lenovo-ts
-    HostName arch-lenovo
-    User luis
-    # Uses Tailscale DNS
-EOF
-
-echo "=== 4. Test SSH Connection ==="
-ssh arch-lenovo 'echo "Connected to $(hostname)"'
-
-echo "=== 5. Initial File Transfer (SCP) ==="
-echo "Copying ~/Projects to server..."
-scp -r ~/Projects/* arch-lenovo:/Users/luischavesrodriguez/Projects/
-
-echo "=== 6. Create Mutagen Syncs ==="
-# Projects sync
-mutagen sync create \
-  --name=projects \
-  --mode=two-way-safe \
-  --ignore="node_modules" \
-  --ignore=".venv" \
-  --ignore="venv" \
-  --ignore="__pycache__" \
-  --ignore=".pixi" \
-  --ignore=".cache" \
-  --ignore=".pytest_cache" \
-  --ignore=".mypy_cache" \
-  --ignore=".ruff_cache" \
-  --ignore="target" \
-  --ignore="dist" \
-  --ignore="build" \
-  --ignore=".next" \
-  --ignore=".DS_Store" \
-  --ignore="*.log" \
-  --ignore=".env" \
-  --ignore=".env.local" \
-  ~/Projects arch-lenovo:/Users/luischavesrodriguez/Projects
-
-# Claude config sync
-mutagen sync create \
-  --name=claude-config \
-  --mode=two-way-safe \
-  --ignore="CLAUDE.md" \
-  ~/.claude arch-lenovo:/home/luis/.claude
-
-echo "=== 7. Verify Sync ==="
-mutagen sync list
-
-echo "=== Done! ==="
-echo "Syncs are running. Check status with: mutagen sync list"
-```
-
----
-
-## Happy CLI Integration
-
-[Happy](https://github.com/lucharo/happy) enables phone notifications and session management.
-
-### On the Server
-```bash
-# Start Happy daemon
-happy daemon start
-
-# Start a Claude session (notifies your phone)
-cd ~/Projects/myproject
-happy claude
-```
-
-### On Your Phone
-- Install Happy app
-- Sessions appear automatically when daemon is running
-- Get notifications when Claude needs input or finishes
-
----
-
-## Alternative: Cloud VM
-
-If repurposing a personal laptop sounds like too much trouble, consider:
-
-- **DigitalOcean Droplet** - $6/mo for basic, $12/mo for 2GB RAM
-- **Hetzner Cloud** - Even cheaper in EU
-- **Oracle Cloud Free Tier** - Free ARM instance
-
-Pros: Fresh system, no partition surprises, no personal cruft
-Cons: Monthly cost, data egress costs, latency
-
-This guide focuses on the "repurposed laptop" approach because:
-1. No ongoing cost
-2. Your data stays local
-3. The hardware was already sitting there
+If this sounds like too much trouble: DigitalOcean ($6/mo), Hetzner, or Oracle Cloud Free Tier. Fresh system, no partition surprises. But this costs nothing and keeps data local.
