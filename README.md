@@ -5,17 +5,17 @@ Sync two machines so Claude sessions work from anywhere - your laptop, a home se
 ```mermaid
 flowchart LR
     subgraph MacBook["MacBook (primary)"]
-        MP[~/Projects]
-        MC[~/.claude]
+        MP["~/Projects"]
+        MC["~/.claude"]
     end
 
     subgraph Server["arch-lenovo (always-on)"]
-        SP[/Users/.../Projects]
-        SC[~/.claude]
+        SP["/Users/.../Projects"]
+        SC["~/.claude"]
     end
 
     subgraph Phone
-        H[Happy App]
+        H["Happy App"]
     end
 
     MP <-->|Mutagen| SP
