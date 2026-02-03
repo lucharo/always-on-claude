@@ -36,6 +36,8 @@ flowchart LR
 
 The bind mount is the trick. Claude stores sessions by path - if paths match, sessions are portable.
 
+> **Note:** `arch-lenovo` is just the hostname of my server - replace with your own machine's hostname throughout.
+
 ## Session portability
 
 ```mermaid
@@ -153,9 +155,10 @@ brew install mutagen-io/mutagen/mutagen
 mutagen daemon start
 
 # Initial transfer (do this BEFORE enabling sync)
+# ~/Projects is your MacBook path, server uses /Users/... (the bind mount)
 scp -r ~/Projects/* arch-lenovo:/Users/<macos-username>/Projects/
 
-# Create syncs
+# Create syncs (MacBook ~/Projects <-> Server /Users/.../Projects)
 mutagen sync create --name=projects --mode=two-way-safe \
   --ignore="node_modules" --ignore=".venv" --ignore="dist" \
   --ignore="build" --ignore=".next" --ignore=".cache" \
