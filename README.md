@@ -1,6 +1,4 @@
-# Always-On Claude
-
-> **v1** - This setup works but has rough edges. See "Mistakes we made" below.
+# Always-On Claude (v1)
 
 > **Excited about [Happier](https://github.com/happier-dev/happier)!** The Happy app isn't actively maintained, but [@leeroy](https://github.com/leeroy) is building a fork with many improvements. I'll switch to that once it's released.
 
