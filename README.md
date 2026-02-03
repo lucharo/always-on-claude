@@ -6,6 +6,19 @@
 
 Sync two machines so Claude sessions work from anywhere - your laptop, a home server, or your phone.
 
+## Overview
+
+**Devices:**
+- MacBook (primary dev machine)
+- iPhone (for on-the-go access)
+- Server - I use an old Lenovo ThinkPad running Arch, but you could use a DigitalOcean Droplet, Hetzner VM, or whatever
+
+**Tools:**
+- [Claude Code](https://github.com/anthropics/claude-code) - Claude in the terminal
+- [Happy CLI](https://github.com/happycoder/happy) - manage Claude sessions from your phone
+- [Mutagen](https://mutagen.io/) - bidirectional file syncing
+- [Tailscale](https://tailscale.com/) - secure mesh network tying everything together (SSH, port forwarding, etc.)
+
 ## Context
 
 This repurposes a 2020 ThinkPad running Arch Linux as a home server. It's not a cloud VM or purpose-built server. Every machine is different - partition layouts, usernames, network configs. This guide documents the core concepts; adapt to your setup.
