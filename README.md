@@ -31,7 +31,7 @@ flowchart LR
 
 1. **Tailscale** creates a secure mesh network between devices
 2. **Mutagen** syncs `~/Projects` and `~/.claude` bidirectionally
-3. **Bind mount** on Linux makes paths identical (`/Users/luischavesrodriguez/...` on both machines)
+3. **Bind mount** on Linux makes paths identical (`/Users/<username>/...` on both machines)
 4. **Happy CLI** lets you start Claude sessions from your phone
 
 The bind mount is the trick. Claude stores sessions by path - if paths match, sessions are portable.
@@ -71,11 +71,11 @@ Linux doesn't have `/Users`. We create it, but store the data on the big partiti
 ```mermaid
 flowchart TB
     subgraph home["/home partition (192GB)"]
-        DATA["/home/luischavesrodriguez_macpath/Projects"]
+        DATA["/home/${USER}_macpath/Projects"]
     end
 
     subgraph root["/ partition (25GB)"]
-        MOUNT["/Users/luischavesrodriguez/Projects"]
+        MOUNT["/Users/${MACOS_USER}/Projects"]
     end
 
     DATA -->|"bind mount"| MOUNT
@@ -134,9 +134,10 @@ sudo tailscale up
 
 # Create bind mount for path compatibility
 sudo mkdir -p /home/${USER}_macpath/Projects
-sudo mkdir -p /Users/luischavesrodriguez
-sudo mount --bind /home/${USER}_macpath /Users/luischavesrodriguez
-echo "/home/${USER}_macpath /Users/luischavesrodriguez none bind 0 0" | sudo tee -a /etc/fstab
+# Replace <macos-username> with your actual macOS username
+sudo mkdir -p /Users/<macos-username>
+sudo mount --bind /home/${USER}_macpath /Users/<macos-username>
+echo "/home/${USER}_macpath /Users/<macos-username> none bind 0 0" | sudo tee -a /etc/fstab
 
 # Install Claude Code via nvm (not system node)
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
@@ -152,17 +153,17 @@ brew install mutagen-io/mutagen/mutagen
 mutagen daemon start
 
 # Initial transfer (do this BEFORE enabling sync)
-scp -r ~/Projects/* arch-lenovo:/Users/luischavesrodriguez/Projects/
+scp -r ~/Projects/* arch-lenovo:/Users/<macos-username>/Projects/
 
 # Create syncs
 mutagen sync create --name=projects --mode=two-way-safe \
   --ignore="node_modules" --ignore=".venv" --ignore="dist" \
   --ignore="build" --ignore=".next" --ignore=".cache" \
-  ~/Projects arch-lenovo:/Users/luischavesrodriguez/Projects
+  ~/Projects arch-lenovo:/Users/<macos-username>/Projects
 
 mutagen sync create --name=claude-config --mode=two-way-safe \
   --ignore="CLAUDE.md" \
-  ~/.claude arch-lenovo:/home/luis/.claude
+  ~/.claude arch-lenovo:~/.claude
 ```
 
 ## Troubleshooting
