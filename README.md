@@ -5,7 +5,7 @@ Sync two machines so Claude sessions work from anywhere - your laptop, a home se
 ```mermaid
 flowchart LR
     subgraph MacBook["MacBook (primary)"]
-        MP["~/Projects"]
+        MP["/Users/.../Projects"]
         MC["~/.claude"]
     end
 
