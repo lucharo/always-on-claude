@@ -135,11 +135,12 @@ sudo systemctl enable --now sshd tailscaled
 sudo tailscale up
 
 # Create bind mount for path compatibility
+# MACOS_USER = your macOS username (run `whoami` on MacBook to check)
+MACOS_USER="yourname"  # <-- change this!
 sudo mkdir -p /home/${USER}_macpath/Projects
-# Replace <macos-username> with your actual macOS username
-sudo mkdir -p /Users/<macos-username>
-sudo mount --bind /home/${USER}_macpath /Users/<macos-username>
-echo "/home/${USER}_macpath /Users/<macos-username> none bind 0 0" | sudo tee -a /etc/fstab
+sudo mkdir -p /Users/${MACOS_USER}
+sudo mount --bind /home/${USER}_macpath /Users/${MACOS_USER}
+echo "/home/${USER}_macpath /Users/${MACOS_USER} none bind 0 0" | sudo tee -a /etc/fstab
 
 # Install Claude Code via nvm (not system node)
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
@@ -156,13 +157,13 @@ mutagen daemon start
 
 # Initial transfer (do this BEFORE enabling sync)
 # ~/Projects is your MacBook path, server uses /Users/... (the bind mount)
-scp -r ~/Projects/* arch-lenovo:/Users/<macos-username>/Projects/
+scp -r ~/Projects/* arch-lenovo:/Users/$USER/Projects/
 
 # Create syncs (MacBook ~/Projects <-> Server /Users/.../Projects)
 mutagen sync create --name=projects --mode=two-way-safe \
   --ignore="node_modules" --ignore=".venv" --ignore="dist" \
   --ignore="build" --ignore=".next" --ignore=".cache" \
-  ~/Projects arch-lenovo:/Users/<macos-username>/Projects
+  ~/Projects arch-lenovo:/Users/$USER/Projects
 
 mutagen sync create --name=claude-config --mode=two-way-safe \
   --ignore="CLAUDE.md" \
