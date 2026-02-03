@@ -19,6 +19,16 @@ Sync two machines so Claude sessions work from anywhere - your laptop, a home se
 - [Mutagen](https://mutagen.io/) - bidirectional file syncing
 - [Tailscale](https://tailscale.com/) - secure mesh network tying everything together (SSH, port forwarding, etc.)
 
+## Known issues
+
+### Conversation sync race condition
+
+**Problem:** Claude Code writes to `.jsonl` conversation files continuously during sessions (especially with thinking mode). Mutagen syncs these files mid-write, causing missing messages when resuming conversations.
+
+**Solution:** Use Claude Code hooks to pause sync during active sessions. See `hooks/` directory and [issue #1](../../issues/1) for details.
+
+**Trade-off:** You can't have simultaneous conversations on both machines.
+
 ## Context
 
 This repurposes a 2020 ThinkPad running Arch Linux as a home server. It's not a cloud VM or purpose-built server. Every machine is different - partition layouts, usernames, network configs. This guide documents the core concepts; adapt to your setup.
@@ -183,22 +193,11 @@ mutagen sync create --name=claude-config --mode=two-way-safe \
 3. **Used symlink instead of bind mount** - Happy showed wrong paths, sessions weren't portable
 4. **Forgot to clean old laptop** - 12GB movie, 3.5GB pacman cache ate disk space
 
-## Known issues
+## Conversation sync setup
 
-### Conversation sync race condition
-
-**Problem:** Claude Code writes to `.jsonl` conversation files continuously during sessions (especially with thinking mode). Mutagen syncs these files mid-write, causing:
-- Older remote versions overwriting newer local versions
-- Missing messages when resuming conversations
-- Divergent conversation states between machines
-
-**Solution:** Use Claude Code hooks to pause sync during active sessions.
-
-The hooks in `hooks/` do this automatically:
+The hooks in `hooks/` prevent the race condition:
 - `sync-session-start.sh` - Flushes pending syncs, then pauses `claude-config` sync
 - `sync-session-end.sh` - Resumes sync and flushes to push changes
-
-**Trade-off:** You can't have simultaneous conversations on both machines. The sync pauses while a session is active, so the other machine won't see updates until you exit.
 
 **Setup:** Copy hooks to `~/.claude/hooks/` and add to your `settings.json`:
 
@@ -230,8 +229,6 @@ The hooks in `hooks/` do this automatically:
   }
 }
 ```
-
-See [GitHub issue #1](../../issues/1) for discussion.
 
 ## Alternatives
 
