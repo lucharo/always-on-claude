@@ -1,8 +1,8 @@
 # Always-On Claude (v1)
 
-> **My take:** Claudbot/Multibot/OpenClaude aren't for me. I prefer an interface where *I* manage multiple threads rather than an agent managing them for me - visibility and control matter. Happy fills that gap, and Happier will be even better.
-
 > **Excited about [Happier](https://github.com/happier-dev/happier)!** The Happy app isn't actively maintained, but [@leeroy](https://github.com/leeroy) is building a fork with many improvements. I'll switch to that once it's released.
+
+> **Take:** Clawdbot/Moltbot/OpenClaw aren't for me. I prefer an interface where I manage multiple threads rather than an agent managing them for me - visibility and control matter. Happy fills that gap, and Happier will be even better.
 
 Sync two machines so Claude sessions work from anywhere - your laptop, a home server, or your phone.
 
