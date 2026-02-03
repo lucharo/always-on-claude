@@ -12,18 +12,18 @@ This repurposes a 2020 ThinkPad running Arch Linux as a home server. It's not a 
 
 **Want to set this up?** Point Claude to this repo - it includes skills that can help. But expect to adapt things to your specific machine.
 
-```
-┌─────────────────── Tailscale (secure mesh network) ───────────────────┐
-│                                                                        │
-│   MacBook (primary)          Server (always-on)          Phone        │
-│   ┌──────────────┐           ┌──────────────┐       ┌───────────┐    │
-│   │ /Users/...   │◄─Mutagen─►│ /Users/...   │       │ Happy App │    │
-│   │ ~/.claude    │◄─Mutagen─►│ ~/.claude    │◄──────│           │    │
-│   └──────────────┘           └──────────────┘       └───────────┘    │
-│                                     ▲                     │           │
-│                                     └── starts sessions ──┘           │
-│                                                                        │
-└────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Tailscale["🔒 Tailscale network"]
+        direction LR
+
+        MacBook["💻 MacBook<br/>/Users/.../Projects<br/>~/.claude"]
+        Server["🖥️ Server<br/>/Users/.../Projects<br/>~/.claude"]
+        Phone["📱 Phone<br/>Happy App"]
+
+        MacBook <-->|"Mutagen sync"| Server
+        Phone -->|"starts sessions"| Server
+    end
 ```
 
 ## How it works
