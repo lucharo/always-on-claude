@@ -12,32 +12,18 @@ This repurposes a 2020 ThinkPad running Arch Linux as a home server. It's not a 
 
 **Want to set this up?** Point Claude to this repo - it includes skills that can help. But expect to adapt things to your specific machine.
 
-```mermaid
-flowchart LR
-    subgraph Tailscale["Tailscale (secure mesh network)"]
-        subgraph MacBook["MacBook (primary)"]
-            MP["/Users/.../Projects"]
-            MC["~/.claude"]
-        end
-
-        subgraph Server["server (always-on)"]
-            SP["/Users/.../Projects"]
-            SC["~/.claude"]
-        end
-
-        subgraph Phone
-            H["Happy App"]
-        end
-
-        MP <-->|Mutagen| SP
-        MC <-->|Mutagen| SC
-        H -->|starts sessions| Server
-    end
-
-    style Tailscale fill:#f5f5f5,stroke:#333
-    style MacBook fill:#e1f5fe
-    style Server fill:#f3e5f5
-    style Phone fill:#e8f5e9
+```
+┌─────────────────── Tailscale (secure mesh network) ───────────────────┐
+│                                                                        │
+│   MacBook (primary)          Server (always-on)          Phone        │
+│   ┌──────────────┐           ┌──────────────┐       ┌───────────┐    │
+│   │ /Users/...   │◄─Mutagen─►│ /Users/...   │       │ Happy App │    │
+│   │ ~/.claude    │◄─Mutagen─►│ ~/.claude    │◄──────│           │    │
+│   └──────────────┘           └──────────────┘       └───────────┘    │
+│                                     ▲                     │           │
+│                                     └── starts sessions ──┘           │
+│                                                                        │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## How it works
