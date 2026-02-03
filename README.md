@@ -183,6 +183,56 @@ mutagen sync create --name=claude-config --mode=two-way-safe \
 3. **Used symlink instead of bind mount** - Happy showed wrong paths, sessions weren't portable
 4. **Forgot to clean old laptop** - 12GB movie, 3.5GB pacman cache ate disk space
 
+## Known issues
+
+### Conversation sync race condition
+
+**Problem:** Claude Code writes to `.jsonl` conversation files continuously during sessions (especially with thinking mode). Mutagen syncs these files mid-write, causing:
+- Older remote versions overwriting newer local versions
+- Missing messages when resuming conversations
+- Divergent conversation states between machines
+
+**Solution:** Use Claude Code hooks to pause sync during active sessions.
+
+The hooks in `hooks/` do this automatically:
+- `sync-session-start.sh` - Flushes pending syncs, then pauses `claude-config` sync
+- `sync-session-end.sh` - Resumes sync and flushes to push changes
+
+**Trade-off:** You can't have simultaneous conversations on both machines. The sync pauses while a session is active, so the other machine won't see updates until you exit.
+
+**Setup:** Copy hooks to `~/.claude/hooks/` and add to your `settings.json`:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/sync-session-start.sh"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/sync-session-end.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+See [GitHub issue #1](../../issues/1) for discussion.
+
 ## Alternatives
 
 If this sounds like too much trouble: DigitalOcean ($6/mo), Hetzner, or Oracle Cloud Free Tier. Fresh system, no partition surprises. But this costs nothing and keeps data local.
