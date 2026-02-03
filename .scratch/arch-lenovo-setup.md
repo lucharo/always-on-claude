@@ -230,10 +230,11 @@ and Tailscale. Access from MacBook via SSH or from phone via Happy CLI.
 
 ## Access Patterns
 
-- From MacBook: `ssh arch-lenovo` (local) or `ssh arch-lenovo-ts` (Tailscale)
+- From MacBook: `ssh arch` (via Tailscale)
 - From phone: Happy app (sessions visible automatically)
 - Start session: `happy claude` in project directory
-- Dev servers accessible at http://arch-lenovo:PORT via Tailscale
+- Dev servers accessible at http://arch:PORT via Tailscale
+- Tailscale IP: 100.75.96.28 (fallback if hostname doesn't resolve)
 
 ## File Sync (Mutagen)
 

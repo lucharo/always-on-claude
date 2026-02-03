@@ -1,0 +1,143 @@
+# Machine Context
+
+This is a Lenovo ThinkPad running Arch Linux, configured as a persistent home
+server for Claude Code. It runs 24/7 with the lid closed, connected via WiFi
+and Tailscale. Access from MacBook via SSH or from phone via Happy CLI.
+
+## System
+
+- **OS:** Arch Linux (rolling release)
+- **Package managers:** pacman, yay (AUR)
+- **Node.js:** Via nvm (not system pacman - avoids ICU conflicts)
+- **Sudo:** Requires password (passwordless not configured)
+
+## Access Patterns
+
+- From MacBook: `ssh arch` (via Tailscale)
+- From phone: Happy app (sessions visible automatically)
+- Start session: `happy claude` in project directory
+- Dev servers accessible at http://arch:PORT via Tailscale
+- Tailscale IP: 100.75.96.28 (fallback if hostname doesn't resolve)
+
+## Git Worktrees Workflow
+
+**BEFORE starting any coding work, ALWAYS check:**
+```bash
+git status          # What branch am I on? Any uncommitted changes?
+git branch -a       # What branches exist?
+```
+
+**If on main/master with uncommitted work or about to start new feature work:**
+- Ask the user if they want to create a worktree for isolation
+- Worktrees allow parallel work on different branches without stashing
+
+**Creating a worktree:**
+```bash
+git worktree add ../project-feature-name feature-branch  # New branch
+git worktree add ../project-bugfix existing-branch       # Existing branch
+```
+
+**Listing and removing worktrees:**
+```bash
+git worktree list                    # See all worktrees
+git worktree remove ../project-feature  # Remove when done
+```
+
+**Why worktrees matter:**
+- Happy CLI doesn't yet have built-in worktree support
+- Prevents accidental commits to main
+- Keeps feature work isolated
+- Can have multiple features in progress simultaneously
+
+**Reminder:** When user asks to work on a project, check the git state first and suggest a worktree if appropriate.
+
+## File Sync (Mutagen)
+
+~/Projects syncs bidirectionally with MacBook via **Mutagen** (not Syncthing).
+
+- Mutagen runs on MacBook and pushes/pulls to this machine
+- Mode: `two-way-safe` - changes sync both directions
+- Conflicts pause for manual resolution
+
+### CRITICAL: File Sync Safety Rules
+
+**NEVER do these while sync is running:**
+- Move or rename synced directories (mv ~/Projects anywhere)
+- Create symlinks in place of synced directories
+- Run scripts that bulk-move files in synced locations
+- Change the path structure of synced roots
+
+**ALWAYS do before ANY path changes:**
+1. PAUSE the sync first (from MacBook): `mutagen sync pause <name>`
+2. Verify it's paused: `mutagen sync list`
+3. Make your changes
+4. CAREFULLY resume: `mutagen sync resume <name>`
+5. Monitor for conflicts: `mutagen sync list`
+
+**If something goes wrong:**
+- Files are rarely deleted by sync tools in "safe" modes
+- Check both endpoints - data is usually still there
+- Don't panic, don't run more commands - stop and assess
+
+**Ignored (not synced, rebuild locally):**
+- node_modules, .venv, .pixi, __pycache__
+- dist, build, .next, .cache
+- .env, .env.local, *.log, .DS_Store
+
+**After switching to a project, always rebuild deps:**
+```bash
+# Check what the project uses and run appropriate command:
+pixi install      # pixi.toml
+uv sync           # pyproject.toml with uv
+npm install       # package.json
+bun install       # bun.lockb
+```
+
+## Secrets
+
+- Environment vars: ~/.bashrc
+- Encrypted: SOPS + age (~/.config/sops/age/)
+- NEVER commit secrets to git
+
+## GPU Access
+
+This machine has no GPU. For GPU workloads, use Modal:
+```bash
+modal run script.py  # Provisions cloud GPU on demand
+```
+
+## Tooling Preferences
+
+- **Python**: Always use `uv` or `uvx` to install/run Python tools
+  - `uv add <package>` to add dependencies to a project
+  - `uvx <tool>` to run one-off tools without installing
+  - `uv run <script>` to run scripts in project context
+- **Pixi**: Use for conda/mamba environments when needed (`pixi add`, `pixi run`)
+- **Node**: Use `bun` when available, fallback to `npm`
+  - `bunx <tool>` for one-off Node tools
+
+## System Maintenance
+
+```bash
+sudo pacman -Syu                            # Update system
+npm update -g @anthropic-ai/claude-code     # Update Claude Code
+npm update -g happy-coder                   # Update Happy
+```
+
+## Things to Watch Out For
+
+- After pacman -Syu, check that node still works (ICU conflicts).
+  If node breaks: `nvm reinstall 25`
+- After syncing new projects, always rebuild deps locally
+- WiFi can drop if laptop overheats with lid closed - check ventilation
+
+## Environment Variables
+
+This machine may be missing some environment variables/API keys that exist on the MacBook.
+If a command fails due to missing credentials:
+1. Ask the user: "Which API key do you need? I can guide you to set it up."
+2. NEVER ask the user to paste keys directly in chat
+3. Guide them to add keys to ~/.bashrc or use a secrets manager
+4. Common missing keys: OPENAI_API_KEY, GITHUB_TOKEN, etc.
+
+The MacBook is the primary machine - some services may not be configured here yet.

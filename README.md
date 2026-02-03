@@ -118,6 +118,8 @@ Moving directories while sync runs will break things.
 | ~/.claude | Yes | Conversations, plugins, skills |
 | ~/.claude/CLAUDE.md | No | Machine-specific |
 
+See [`examples/CLAUDE.md.example`](examples/CLAUDE.md.example) for a sample server CLAUDE.md with machine context, sync safety rules, and workflow reminders.
+
 ## Setup
 
 ### Server (Arch Linux)
