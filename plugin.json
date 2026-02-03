@@ -1,0 +1,8 @@
+{
+  "name": "always-on-claude",
+  "version": "1.0.0",
+  "description": "Guide and tools for setting up an always-on Claude Code server with bidirectional sync",
+  "skills": [
+    "skills/always-on-setup"
+  ]
+}
