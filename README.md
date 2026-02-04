@@ -4,7 +4,13 @@
 
 > **Take:** Clawdbot/Moltbot/OpenClaw aren't for me. I prefer an interface where I manage multiple threads rather than an agent managing them for me - visibility and control matter. Happy fills that gap, and Happier will be even better.
 
-Sync two machines so Claude sessions work from anywhere - your laptop, a home server, or your phone.
+Sync your code between machines so you can start Claude sessions from anywhere - your laptop, a home server, or your phone.
+
+> **⚠️ Sessions don't sync - only code does.**
+>
+> I originally wanted to continue conversations across machines. It doesn't work reliably. Claude Code writes to conversation files continuously, causing race conditions with bidirectional sync. After much debugging ([issue #1](../../issues/1)), I've accepted that **sessions are local to each machine**.
+>
+> What you get: Start a session on your phone, your code changes sync, continue working on your laptop with a *new* session that sees all your code. Not seamless, but practical.
 
 ## Overview
 
@@ -19,16 +25,6 @@ Sync two machines so Claude sessions work from anywhere - your laptop, a home se
 - [Mutagen](https://mutagen.io/) - bidirectional file syncing
 - [Tailscale](https://tailscale.com/) - secure mesh network tying everything together (SSH, port forwarding, etc.)
 
-## Known issues
-
-### Conversation sync race condition
-
-**Problem:** Claude Code writes to `.jsonl` conversation files continuously during sessions (especially with thinking mode). Mutagen syncs these files mid-write, causing missing messages when resuming conversations.
-
-**Solution:** Use Claude Code hooks to pause sync during active sessions. See `hooks/` directory and [issue #1](../../issues/1) for details.
-
-**Trade-off:** You can't have simultaneous conversations on both machines.
-
 ## Context
 
 This repurposes a 2020 ThinkPad running Arch Linux as a home server. It's not a cloud VM or purpose-built server. Every machine is different - partition layouts, usernames, network configs. This guide documents the core concepts; adapt to your setup.
@@ -40,11 +36,11 @@ flowchart TB
     subgraph Tailscale["🔒 Tailscale network"]
         direction LR
 
-        MacBook["💻 MacBook<br/>/Users/.../Projects<br/>~/.claude"]
-        Server["🖥️ Server<br/>/Users/.../Projects<br/>~/.claude"]
+        MacBook["💻 MacBook<br/>/Users/.../Projects"]
+        Server["🖥️ Server<br/>/Users/.../Projects"]
         Phone["📱 Phone<br/>Happy App"]
 
-        MacBook <-->|"Mutagen sync"| Server
+        MacBook <-->|"Mutagen sync<br/>(code only)"| Server
         Phone -->|"starts sessions"| Server
     end
 ```
@@ -52,19 +48,21 @@ flowchart TB
 ## How it works
 
 1. **Tailscale** creates a secure mesh network between devices
-2. **Mutagen** syncs `~/Projects` and `~/.claude` bidirectionally
-3. **Bind mount** on Linux makes paths identical - so Claude conversations (stored in `~/.claude/projects/-Users-<username>-...`) use the same keys on both machines
+2. **Mutagen** syncs `~/Projects` bidirectionally (code, not conversations)
+3. **Bind mount** on Linux makes paths identical across machines
 4. **Happy CLI** lets you start Claude sessions from your phone
 
-The bind mount is the trick. Claude stores conversations keyed by project path (e.g., `-Users-yourname-Projects-foo`). Same path on both machines = same conversation accessible from either.
+## ~~Session portability~~ What actually works
 
-## Session portability
+~~I hoped to continue conversations across machines.~~ Here's the reality:
 
-- **Phone → Server → MacBook**: Works. Happy creates session at `/Users/...`, Mutagen syncs it, same path on MacBook.
-- **MacBook → Server (SSH)**: Works. Same paths on both machines = same conversation keys.
-- **MacBook → Phone**: Doesn't work. Happy can only see sessions it started.
+| Scenario | Works? | Notes |
+|----------|--------|-------|
+| Start on phone, continue on laptop | ❌ | Code syncs, but start a new session |
+| Start on laptop, continue on server | ❌ | Same - new session, same code |
+| Work on phone, see changes on laptop | ✅ | Code syncs fine |
 
-**Note:** Even when you can't continue a conversation directly, the files always sync. You can start a new session and catch up - Claude will see all your code changes.
+**The shared context is your code, not your conversation history.** Each machine has its own `~/.claude` with separate sessions. When you switch machines, start fresh - Claude will see all your code changes.
 
 ## The bind mount
 
@@ -112,10 +110,8 @@ ssh arch-lenovo-ts       # via Tailscale
 
 ```bash
 mutagen sync pause projects
-mutagen sync pause claude-config
 # make changes
 mutagen sync resume projects
-mutagen sync resume claude-config
 ```
 
 Moving directories while sync runs will break things.
@@ -124,9 +120,9 @@ Moving directories while sync runs will break things.
 
 | Path | Synced | Notes |
 |------|--------|-------|
-| ~/Projects | Yes | Excludes node_modules, .venv, build artifacts |
-| ~/.claude | Yes | Conversations, plugins, skills |
-| ~/.claude/CLAUDE.md | No | Machine-specific |
+| ~/Projects | ✅ Yes | Excludes node_modules, .venv, build artifacts |
+| ~/.claude | ❌ No | Sessions are local to each machine |
+| ~/.claude/CLAUDE.md | ❌ No | Machine-specific anyway |
 
 See [`examples/CLAUDE.md.example`](examples/CLAUDE.md.example) for a sample server CLAUDE.md with machine context, sync safety rules, and workflow reminders.
 
@@ -165,15 +161,11 @@ mutagen daemon start
 # ~/Projects is your MacBook path, server uses /Users/... (the bind mount)
 scp -r ~/Projects/* arch-lenovo:/Users/$USER/Projects/
 
-# Create syncs (MacBook ~/Projects <-> Server /Users/.../Projects)
+# Create sync (code only - NOT conversations)
 mutagen sync create --name=projects --mode=two-way-safe \
   --ignore="node_modules" --ignore=".venv" --ignore="dist" \
   --ignore="build" --ignore=".next" --ignore=".cache" \
   ~/Projects arch-lenovo:/Users/$USER/Projects
-
-mutagen sync create --name=claude-config --mode=two-way-safe \
-  --ignore="CLAUDE.md" \
-  ~/.claude arch-lenovo:~/.claude
 ```
 
 ## Troubleshooting
@@ -192,43 +184,21 @@ mutagen sync create --name=claude-config --mode=two-way-safe \
 2. **Put /Users on root partition** - filled up 25GB fast, should've used /home
 3. **Used symlink instead of bind mount** - Happy showed wrong paths, sessions weren't portable
 4. **Forgot to clean old laptop** - 12GB movie, 3.5GB pacman cache ate disk space
+5. **Tried to sync conversations** - Race conditions, lost messages, gave up (see below)
 
-## Conversation sync setup
+## Why session sync doesn't work
 
-The hooks in `hooks/` prevent the race condition:
-- `sync-session-start.sh` - Flushes pending syncs, then pauses `claude-config` sync
-- `sync-session-end.sh` - Resumes sync and flushes to push changes
+Claude Code writes to `.jsonl` conversation files continuously, especially with thinking mode. Bidirectional sync tools like Mutagen grab these files mid-write, causing:
 
-**Setup:** Copy hooks to `~/.claude/hooks/` and add to your `settings.json`:
+- Older versions overwriting newer ones
+- Missing messages when resuming
+- Divergent states between machines
 
-```json
-{
-  "hooks": {
-    "SessionStart": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.claude/hooks/sync-session-start.sh"
-          }
-        ]
-      }
-    ],
-    "SessionEnd": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.claude/hooks/sync-session-end.sh"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
+I tried hooks to pause sync during sessions ([see hooks/](hooks/)), but it breaks down with multiple concurrent sessions. The fundamental issue: continuous file writes + bidirectional sync = race conditions.
+
+**Accepted trade-off:** Sessions are local. Code syncs. Start fresh sessions when switching machines.
+
+See [issue #1](../../issues/1) for the full investigation.
 
 ## Alternatives
 
