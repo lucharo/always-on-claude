@@ -25,6 +25,10 @@ sudo systemctl enable --now tailscaled
 echo "=== 4. Connect to Tailscale ==="
 sudo tailscale up
 
+echo "=== 4b. Allow Tailscale commands without sudo ==="
+# Enables 'tailscale file cp' and other commands without root
+sudo tailscale set --operator=$USER
+
 echo "=== 5. Create Directory Structure ==="
 # Create on /home partition for space
 # Use BIND MOUNT (not symlink) to /Users for macOS path compatibility
@@ -110,6 +114,16 @@ echo "Copying ~/Projects to server (this may take a while)..."
 scp -r ~/Projects/* ${SERVER_HOST}:${SERVER_PATH}/
 
 echo "=== 6. Create Projects Sync ==="
+echo "⚠️  WARNING: Bidirectional sync carries risk of data loss."
+echo "Conflicts or race conditions can delete/overwrite files on EITHER machine."
+echo "two-way-safe mode helps but isn't bulletproof. Keep backups."
+echo "If unsure, skip this step and use git push/pull or scp instead."
+read -p "Continue with Mutagen sync? (y/N) " confirm
+if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
+  echo "Skipping Mutagen sync. You can set it up later."
+  echo "=== Done (without sync) ==="
+  exit 0
+fi
 mutagen sync create \
   --name=projects \
   --mode=two-way-safe \

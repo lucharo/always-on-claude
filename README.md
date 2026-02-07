@@ -106,6 +106,8 @@ ssh arch-lenovo-ts       # via Tailscale
 
 ## Sync safety
 
+> **⚠️ Mutagen sync should be opt-in.** Bidirectional file syncing carries real risk of data loss on your primary machine. If Mutagen gets confused (conflicts, race conditions, interrupted transfers), it can delete or overwrite files on either side. The `two-way-safe` mode helps but isn't bulletproof. **Understand the risks before enabling sync, and always keep backups of important work.** If you're not comfortable with this, skip Mutagen and use `git push`/`pull` or manual `scp` instead.
+
 **Pause sync before changing paths:**
 
 ```bash
@@ -167,6 +169,42 @@ mutagen sync create --name=projects --mode=two-way-safe \
   --ignore="build" --ignore=".next" --ignore=".cache" \
   ~/Projects arch-lenovo:/Users/$USER/Projects
 ```
+
+## Tailscale tips
+
+### File sharing between devices
+
+Tailscale can send files directly between devices with `tailscale file cp`. This works with any device on your tailnet, including phones with the Tailscale app installed.
+
+```bash
+# By default, requires sudo. To fix this once:
+sudo tailscale set --operator=$USER
+
+# Then send files without sudo
+tailscale file cp myfile.md phone-name:
+tailscale file cp *.md phone-name:
+```
+
+### SSH access from phone
+
+You can SSH into your server from your phone using apps like [Termius](https://termius.com/), connecting over the Tailscale network. This is useful for tasks Claude can't do on its own, like installing packages that require `sudo`:
+
+```bash
+# From Termius (or any SSH client), connect to:
+# Host: your-server-tailscale-hostname (or Tailscale IP)
+# User: your-username
+```
+
+### Passwordless sudo (optional, less secure)
+
+If you want Claude (or scripts) to run `sudo` commands without a password prompt:
+
+```bash
+# On the server, create a sudoers drop-in:
+echo "$USER ALL=(ALL:ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/$USER
+```
+
+This is convenient but means any process running as your user gets root access. It's up to your preference and threat model — on a home server behind Tailscale the risk is low, but be aware of the trade-off.
 
 ## Troubleshooting
 

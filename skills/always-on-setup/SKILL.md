@@ -73,6 +73,10 @@ ssh arch-lenovo-ts   # Explicit Tailscale suffix
 # Exposing port 22 to 0.0.0.0
 ```
 
+### Mutagen Sync is Opt-In
+
+Bidirectional file syncing carries real risk of data loss on your primary machine. Conflicts, race conditions, or interrupted transfers can delete or overwrite files on either side. `two-way-safe` mode helps but isn't bulletproof. If you're not comfortable with this, use `git push`/`pull` or manual `scp` instead. Always keep backups.
+
 ### Pause Sync Before Path Changes
 
 NEVER move directories while Mutagen sync is running:
@@ -165,6 +169,32 @@ mutagen sync terminate projects
 1. Check Tailscale: `tailscale status`
 2. Check server is on: `ping arch-lenovo`
 3. Check SSH: `ssh arch-lenovo 'echo ok'`
+
+### Tailscale File Sharing
+
+Send files to any device on your tailnet (including phones with Tailscale installed):
+
+```bash
+# Allow tailscale commands without sudo (run once):
+sudo tailscale set --operator=$USER
+
+# Send files
+tailscale file cp myfile.md device-name:
+```
+
+### SSH from Phone
+
+Use [Termius](https://termius.com/) or any SSH client on your phone, connecting over the Tailscale network. Useful for running `sudo` commands that Claude can't do (e.g., installing packages).
+
+### Passwordless Sudo (Optional)
+
+To let Claude (or scripts) run `sudo` without a password prompt:
+
+```bash
+echo "$USER ALL=(ALL:ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/$USER
+```
+
+Convenient but less secure — any process running as your user gets root. Acceptable on a home server behind Tailscale, but understand the trade-off.
 
 ### Sudo Not Working (Arch Linux)
 
