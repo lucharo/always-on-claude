@@ -60,20 +60,29 @@ yarn tailscale:url
 
 ## 4. Connecting and Authenticating
 
-Once the server is running and exposed over Tailscale, you must authenticate the daemon and CLI.
+Once the server is running and exposed over Tailscale, you must connect your CLI to the new Relay Server and authenticate.
 
-1. **Configure the Mobile App:**
-   In the Happier mobile app settings, point your **Relay Server URL** to the Tailscale URL generated above: `https://arch.tailacf9ef.ts.net`.
-
-2. **Authenticate the Server Stack (`hstack`):**
-   *Note: If the background service is stuck in a crash loop waiting for authentication, the standard web UI login will fail. Use the mobile QR method instead.*
+1. **Set the Default Server (CLI):**
+   Link the `happier` CLI to your private Tailscale relay instead of the public cloud.
    ```bash
-   hstack stack auth repo-happier-dev-1097aa2624 login --method=mobile
+   happier server add --name "arch happier relay server" --server-url "https://arch.tailacf9ef.ts.net" --use
    ```
-   *Scan the resulting QR code with the configured mobile app to pair your local server with your app.*
 
-3. **Authenticate the CLI (`happier`):**
-   To enable AI vendor usage (e.g., Claude):
+2. **Install the Background Daemon:**
+   Install the systemd daemon so sessions stay alive remotely.
+   ```bash
+   happier daemon install
+   ```
+
+3. **Sign In (Interactive):**
+   *Note: This command generates a QR code. It must be run manually in an interactive SSH session, otherwise it will hang background scripts.*
+   ```bash
+   happier auth login
+   ```
+   *Scan the resulting QR code with the Happier mobile app to pair your terminal.*
+
+4. **Authenticate the AI (e.g., Claude):**
+   To enable AI vendor usage:
    ```bash
    happier connect claude
    ```
