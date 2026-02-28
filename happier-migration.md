@@ -41,6 +41,8 @@ export PATH="$HOME/.happier-stack/bin:$PATH"
 
 ## 3. Server & Service Configuration
 
+Happier uses a tool called `hstack` (Happier Stack) to manage the self-hosted infrastructure (servers, databases, daemon), while `happier` is the CLI used for actual AI interactions.
+
 To ensure the Happier Relay Server and Daemon run persistently in the background:
 
 ```bash
@@ -50,27 +52,35 @@ cd ~/Projects/oss/happier-dev
 yarn service:install
 yarn service:enable
 
-# Enable Tailscale to securely expose the Web UI
+# Enable Tailscale to securely expose the Web UI and Relay
 yarn tailscale:enable
 yarn tailscale:url
+# -> Yields: https://arch.tailacf9ef.ts.net
 ```
 
 ## 4. Connecting and Authenticating
 
-Once the server is running and exposed over Tailscale, the final steps require interactive authentication:
+Once the server is running and exposed over Tailscale, you must authenticate the daemon and CLI.
 
-1. **Authenticate the stack** to pair the local daemon/CLI with the local relay server:
+1. **Configure the Mobile App:**
+   In the Happier mobile app settings, point your **Relay Server URL** to the Tailscale URL generated above: `https://arch.tailacf9ef.ts.net`.
+
+2. **Authenticate the Server Stack (`hstack`):**
+   *Note: If the background service is stuck in a crash loop waiting for authentication, the standard web UI login will fail. Use the mobile QR method instead.*
    ```bash
-   hstack stack auth repo-happier-dev-1097aa2624 login
+   hstack stack auth repo-happier-dev-1097aa2624 login --method=mobile
    ```
-2. **Authenticate the CLI** to enable AI usage (e.g., Claude):
+   *Scan the resulting QR code with the configured mobile app to pair your local server with your app.*
+
+3. **Authenticate the CLI (`happier`):**
+   To enable AI vendor usage (e.g., Claude):
    ```bash
    happier connect claude
    ```
 
 ## Architecture Summary
 
-- **Relay Server:** Hosted locally on Arch, handling sessions and state.
-- **Web UI:** Accessible at the local Tailscale URL (`https://arch.tailacf9ef.ts.net`).
+- **Relay Server:** Hosted locally on Arch (managed via `hstack`), handling sessions and state.
+- **Web UI & App Routing:** Accessible at the local Tailscale URL (`https://arch.tailacf9ef.ts.net`).
 - **Daemon:** Running as a systemd background service on Arch.
 - **Mobile/Remote:** Traffic routes over Tailscale directly to the Arch server, entirely bypassing `api.happier.dev`.
