@@ -30,10 +30,12 @@ Create a direct wrapper (bypasses the `hstack` shim which breaks cloud auth — 
 ```bash
 cat > ~/.npm-global/bin/happier << 'EOF'
 #!/bin/bash
-exec node ~/Projects/oss/happier-dev/apps/cli/dist/index.mjs "$@"
+exec node ~/Projects/oss/happier-dev/apps/cli/bin/happier.mjs "$@"
 EOF
 chmod +x ~/.npm-global/bin/happier
 ```
+
+> **Note:** The official install method is `curl -fsSL https://happier.dev/install | bash`, but the pre-compiled binary requires AVX2 ([#117](https://github.com/happier-dev/happier/issues/117)), which older CPUs (e.g., Sandy Bridge) lack. Building from source is the workaround.
 
 ### Updating
 
