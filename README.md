@@ -1,8 +1,10 @@
-# Always-On Claude (v1)
+# Always-On Claude
 
-> **Excited about [Happier](https://github.com/happier-dev/happier)!** The Happy app isn't actively maintained, but [@leeroy](https://github.com/leeroy) is building a fork with many improvements. I'll switch to that once it's released.
+> **Now using [Happier](https://github.com/happier-dev/happier)!** This project previously used [Happy](https://github.com/happycoder/happy) as its session management CLI. Happy is no longer actively maintained — we've migrated to Happier, a fork with multi-backend support (Claude, Gemini, OpenCode, and more), cloud relay, and active development. For the original Happy-based setup, check out tag [`v1.0-happy`](../../tree/v1.0-happy).
 
-> **Take:** Clawdbot/Moltbot/OpenClaw aren't for me. I prefer an interface where I manage multiple threads rather than an agent managing them for me - visibility and control matter. Happy fills that gap, and Happier will be even better.
+> **Take:** Clawdbot/Moltbot/OpenClaw aren't for me *yet*. I prefer an interface where I manage multiple threads rather than a single gateway agent managing them for me - visibility and control matter. That said, I get the vision: future models will be capable enough that delegating to one very good orchestrator agent will just work. We're not quite there, but getting close. For now, Happier fills the gap perfectly - I stay in control while still getting multi-backend flexibility.
+
+![Architecture diagram showing MacBook, Home Server, and Phone connected via Tailscale VPN, with Happier managing sessions through an E2E encrypted cloud relay](assets/architecture.png)
 
 Sync your code between machines so you can start Claude sessions from anywhere - your laptop, a home server, or your phone.
 
@@ -21,7 +23,7 @@ Sync your code between machines so you can start Claude sessions from anywhere -
 
 **Tools:**
 - [Claude Code](https://github.com/anthropics/claude-code) - Claude in the terminal
-- [Happy CLI](https://github.com/happycoder/happy) - manage Claude sessions from your phone
+- [Happier CLI](https://github.com/happier-dev/happier) - manage AI coding sessions from your phone (Claude, Gemini, OpenCode, and more)
 - [Mutagen](https://mutagen.io/) - bidirectional file syncing
 - [Tailscale](https://tailscale.com/) - secure mesh network tying everything together (SSH, port forwarding, etc.)
 
@@ -38,7 +40,7 @@ flowchart TB
 
         MacBook["💻 MacBook<br/>/Users/.../Projects"]
         Server["🖥️ Server<br/>/Users/.../Projects"]
-        Phone["📱 Phone<br/>Happy App"]
+        Phone["📱 Phone<br/>Happier App"]
 
         MacBook <-->|"Mutagen sync<br/>(code only)"| Server
         Phone -->|"starts sessions"| Server
@@ -50,7 +52,7 @@ flowchart TB
 1. **Tailscale** creates a secure mesh network between devices
 2. **Mutagen** syncs `~/Projects` bidirectionally (code, not conversations)
 3. **Bind mount** on Linux makes paths identical across machines
-4. **Happy CLI** lets you start Claude sessions from your phone
+4. **Happier CLI** lets you start AI coding sessions from your phone
 
 ## ~~Session portability~~ What actually works
 
@@ -101,7 +103,7 @@ ssh arch-lenovo          # local network
 ssh arch-lenovo-ts       # via Tailscale
 
 # Start session from phone
-# Just use Happy app - sessions appear automatically
+# Just use Happier app - sessions appear automatically
 ```
 
 ## Sync safety
@@ -220,7 +222,7 @@ This is convenient but means any process running as your user gets root access. 
 
 1. **Moved directories while sync was running** - Claude session crashed, Mutagen errored
 2. **Put /Users on root partition** - filled up 25GB fast, should've used /home
-3. **Used symlink instead of bind mount** - Happy showed wrong paths, sessions weren't portable
+3. **Used symlink instead of bind mount** - Happier showed wrong paths, sessions weren't portable
 4. **Forgot to clean old laptop** - 12GB movie, 3.5GB pacman cache ate disk space
 5. **Tried to sync conversations** - Race conditions, lost messages, gave up (see below)
 

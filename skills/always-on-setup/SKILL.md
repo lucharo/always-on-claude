@@ -1,13 +1,15 @@
 ---
 name: always-on-setup
-description: This skill should be used when the user asks to "set up an always-on Claude server", "configure a home server for Claude Code", "sync Claude sessions between machines", "access Claude from my phone", "set up Happy CLI with Tailscale", or mentions "always-on Claude setup", "remote Claude via Tailscale", "bidirectional Claude sync", or "Happy daemon configuration". Provides guidance for multi-machine Claude Code setups within a secure Tailscale network.
+description: This skill should be used when the user asks to "set up an always-on Claude server", "configure a home server for Claude Code", "sync Claude sessions between machines", "access Claude from my phone", "set up Happier CLI with Tailscale", or mentions "always-on Claude setup", "remote Claude via Tailscale", "bidirectional Claude sync", or "Happier daemon configuration". Provides guidance for multi-machine Claude Code setups within a secure Tailscale network.
 ---
 
 # Always-On Claude Setup
 
-Configure a secondary machine (server) within a Tailscale network for remote Claude Code sessions, with bidirectional sync and phone access via Happy CLI.
+Configure a secondary machine (server) within a Tailscale network for remote Claude Code sessions, with bidirectional sync and phone access via Happier CLI.
 
-**Important:** This setup is specifically designed for a secure Tailscale mesh network. All tools (Mutagen, SSH, Happy) operate within this private network. Do not expose these services to the public internet.
+**Adapt to your setup:** This guide documents a specific configuration (MacBook + old ThinkPad running Arch Linux). The concepts apply to any server — a DigitalOcean Droplet, Hetzner VM, Mac Mini, Raspberry Pi, etc. Paths, package managers, usernames, and partition layouts will differ. For example, our bind mount maps `/Users/luischavesrodriguez/Projects` because that's the macOS path — yours will be different. Use this as a reference, not a copy-paste script.
+
+**Important:** This setup is specifically designed for a secure Tailscale mesh network. All tools (Mutagen, SSH, Happier) operate within this private network. Do not expose these services to the public internet.
 
 ## Core Components
 
@@ -16,7 +18,7 @@ Configure a secondary machine (server) within a Tailscale network for remote Cla
 | **Tailscale** | Secure mesh network connecting all devices | Yes |
 | **Mutagen** | Bidirectional file sync (Projects + Claude config) | Yes |
 | **Symlinks** | Path compatibility for Claude session portability | Yes |
-| **Happy CLI** | Phone notifications + session management | Yes |
+| **Happier CLI** | Phone/mobile session management, multi-backend support | Yes |
 
 ### Why Each Component Matters
 
@@ -26,7 +28,7 @@ Configure a secondary machine (server) within a Tailscale network for remote Cla
 
 **Symlinks:** Claude Code stores sessions keyed by path (e.g., `-Users-luischavesrodriguez-Projects-foo`). Both machines must resolve `~/Projects` to `/Users/luischavesrodriguez/Projects` for sessions to be portable.
 
-**Happy CLI:** Enables starting Claude sessions from your phone and receiving notifications. The Happy daemon runs on the server and connects to your phone via Tailscale.
+**Happier CLI:** Open-source companion for AI coding agents. Runs sessions on the server, accessible from phone/web/desktop. Supports Claude, Gemini, OpenCode and more. The Happier daemon keeps sessions alive in the background. See `happier-setup.md` for install details.
 
 ---
 
@@ -36,25 +38,18 @@ Configure a secondary machine (server) within a Tailscale network for remote Cla
 
 | # | Requirement | Solution | Status |
 |---|-------------|----------|--------|
-| 1 | Start Claude session from phone in any project folder | Happy daemon on server (`happy claude` in project dir) | **Validated** |
-| 2 | Resume conversation on laptop that was started on server | Bind mount makes paths identical (`/Users/luischavesrodriguez/...` on both machines) | **Testing** |
-| 3 | Continue conversation from server that started on laptop | Same bind mount solution - paths match so session keys match | **Testing** |
-| 4 | Continue conversation from phone that started on laptop | Would require: (a) starting laptop sessions with Happy, or (b) Happy feature to list/resume any conversation | **Missing feature in Happy** |
+| 1 | Start Claude session from phone in any project folder | Happier daemon on server (`happier` in project dir) | **Working** |
+| 2 | Resume conversation on laptop that was started on server | Bind mount makes paths identical (`/Users/luischavesrodriguez/...` on both machines) | **Working** |
+| 3 | Continue conversation from server that started on laptop | Same bind mount solution - paths match so session keys match | **Working** |
+| 4 | Continue conversation from phone that started on laptop | Happier supports listing/resuming sessions started by any method | **Working** |
 
-### Secondary Requirements
+### Notes on Happier CLI
 
-| # | Requirement | Solution | Status |
-|---|-------------|----------|--------|
-| 5 | Create git worktrees from phone | Happy does not support worktree creation | **Missing feature in Happy** |
-
-### Notes on Happy CLI
-
-Happy appears to be lightly maintained. Known limitations:
-- Cannot list/resume arbitrary conversations (only those started via Happy)
-- No worktree management
-- Phone app may have sync delays
-
-Consider contributing to Happy or building alternatives if these limitations are blocking.
+Happier is an actively maintained open-source fork of Happy with significant improvements:
+- Multi-backend support (Claude, Gemini, OpenCode, Codex, and more)
+- Session resume from any device
+- Cloud or self-hosted relay options
+- See `happier-setup.md` for install details and known issues
 
 ---
 
@@ -62,7 +57,7 @@ Consider contributing to Happy or building alternatives if these limitations are
 
 ### All Operations Within Tailscale
 
-Never expose SSH, Mutagen, or Happy to the public internet. Always access via Tailscale hostnames:
+Never expose SSH, Mutagen, or Happier to the public internet. Always access via Tailscale hostnames:
 
 ```bash
 # Correct - via Tailscale
@@ -107,11 +102,13 @@ mutagen sync list
 tailscale status
 ```
 
-### Start Happy Session on Server
+### Start Happier Session on Server
 ```bash
-ssh arch-lenovo
+ssh arch
 cd ~/Projects/myproject
-happy claude
+happier                # Claude (default)
+happier gemini         # Gemini
+happier opencode       # OpenCode
 ```
 
 ### Check Disk Space

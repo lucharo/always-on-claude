@@ -43,7 +43,7 @@ sudo mount --bind /home/${USER}_macpath /Users/luischavesrodriguez
 echo "/home/${USER}_macpath /Users/luischavesrodriguez none bind 0 0" | sudo tee -a /etc/fstab
 
 # Note: Do NOT create ~/Projects symlink
-# Always use /Users/luischavesrodriguez/Projects directly in Happy
+# Always use /Users/luischavesrodriguez/Projects directly in Happier
 # to ensure correct session paths for Claude portability
 
 echo "=== 6. Install Node.js via nvm ==="
@@ -56,13 +56,17 @@ nvm install 22
 echo "=== 7. Install Claude Code ==="
 npm install -g @anthropic-ai/claude-code
 
-echo "=== 8. Install Happy CLI ==="
-npm install -g happy-coder
+echo "=== 8. Install Happier CLI ==="
+# Build from source (preview branch) — see happier-setup.md for details
+# Note: requires yarn and the happier repo cloned at ~/Projects/oss/happier-dev
+sudo pacman -S --noconfirm yarn
+git clone https://github.com/happier-dev/happier.git ~/Projects/oss/happier-dev
+(cd ~/Projects/oss/happier-dev && git checkout preview && yarn install && yarn cli:build)
 
 echo "=== 9. Verify Installation ==="
 echo "Node: $(node --version)"
 echo "Claude Code: $(claude --version)"
-echo "Happy: $(happy --version)"
+echo "Happier: $(happier --version)"
 
 echo "=== Done! ==="
 echo "Server IP: $(tailscale ip -4)"
