@@ -35,7 +35,7 @@ EOF
 chmod +x ~/.npm-global/bin/happier
 ```
 
-> **Note:** The official install method is `curl -fsSL https://happier.dev/install | bash`, but the pre-compiled binary requires AVX2 ([#117](https://github.com/happier-dev/happier/issues/117)), which older CPUs (e.g., Sandy Bridge) lack. Building from source is the workaround.
+> **Note:** The official and recommended install method is `curl -fsSL https://happier.dev/install | bash`. We build from source because our server has a quite old CPU (Sandy Bridge i5-2520M) that lacks AVX2, which the pre-compiled binary requires ([#117](https://github.com/happier-dev/happier/issues/117)).
 
 ### Updating
 
