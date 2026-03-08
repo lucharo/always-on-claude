@@ -265,38 +265,38 @@ mutagen sync create \
   ...
 ```
 
-## Happy CLI Issues
+## Happier CLI Issues
 
-### Happy Daemon Not Running
+### Happier Daemon Not Running
 
-**Symptoms:** `happy claude` fails or no phone notifications
+**Symptoms:** `happier` fails or no phone notifications
 
 **Solutions:**
 ```bash
 # Check daemon status
-happy daemon status
+happier daemon status
 
 # Start if not running
-happy daemon start
+happier daemon install
 
 # Check logs
-happy daemon logs
+happier daemon logs
 ```
 
 ### Sessions Not Visible on Phone
 
 **Causes:**
 - Daemon not running
-- Wrong Happy account
+- Wrong Happier account
 - Network issues
 
 **Solutions:**
 ```bash
 # Verify daemon is running and connected
-happy daemon status
+happier daemon status
 
 # Re-authenticate if needed
-happy auth login
+happier auth login
 ```
 
 ## Arch Linux Specific
