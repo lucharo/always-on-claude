@@ -4,6 +4,8 @@
 
 > **Take:** Clawdbot/Moltbot/OpenClaw aren't for me *yet*. I prefer an interface where I manage multiple threads rather than a single gateway agent managing them for me - visibility and control matter. That said, I get the vision: future models will be capable enough that delegating to one very good orchestrator agent will just work. We're not quite there, but getting close. For now, Happier fills the gap perfectly - I stay in control while still getting multi-backend flexibility.
 
+![Architecture diagram showing MacBook, Home Server, and Phone connected via Tailscale VPN, with Happier managing sessions through an E2E encrypted cloud relay](assets/architecture.png)
+
 Sync your code between machines so you can start Claude sessions from anywhere - your laptop, a home server, or your phone.
 
 > **⚠️ Sessions don't sync - only code does.**
@@ -31,11 +33,6 @@ This repurposes a 2020 ThinkPad running Arch Linux as a home server. It's not a 
 
 **Want to set this up?** Point Claude to this repo - it includes skills that can help. But expect to adapt things to your specific machine.
 
-![Architecture diagram showing MacBook, Home Server, and Phone connected via Tailscale VPN, with Happier managing sessions through an E2E encrypted cloud relay](assets/architecture.png)
-
-<details>
-<summary>Text-based diagram (mermaid)</summary>
-
 ```mermaid
 flowchart TB
     subgraph Tailscale["🔒 Tailscale network"]
@@ -49,8 +46,6 @@ flowchart TB
         Phone -->|"starts sessions"| Server
     end
 ```
-
-</details>
 
 ## How it works
 
