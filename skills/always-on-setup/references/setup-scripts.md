@@ -58,7 +58,10 @@ npm install -g @anthropic-ai/claude-code
 
 echo "=== 8. Install Happier CLI ==="
 # Build from source (preview branch) — see happier-setup.md for details
-cd ~/Projects/oss/happier-dev && yarn install && yarn cli:build
+# Note: requires yarn and the happier repo cloned at ~/Projects/oss/happier-dev
+npm install -g yarn
+git clone https://github.com/happier-dev/happier.git ~/Projects/oss/happier-dev
+cd ~/Projects/oss/happier-dev && git checkout preview && yarn install && yarn cli:build
 
 echo "=== 9. Verify Installation ==="
 echo "Node: $(node --version)"
