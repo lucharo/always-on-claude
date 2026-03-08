@@ -31,6 +31,11 @@ This repurposes a 2020 ThinkPad running Arch Linux as a home server. It's not a 
 
 **Want to set this up?** Point Claude to this repo - it includes skills that can help. But expect to adapt things to your specific machine.
 
+![Architecture diagram showing MacBook, Home Server, and Phone connected via Tailscale VPN, with Happier managing sessions through an E2E encrypted cloud relay](assets/architecture.png)
+
+<details>
+<summary>Text-based diagram (mermaid)</summary>
+
 ```mermaid
 flowchart TB
     subgraph Tailscale["🔒 Tailscale network"]
@@ -44,6 +49,8 @@ flowchart TB
         Phone -->|"starts sessions"| Server
     end
 ```
+
+</details>
 
 ## How it works
 
