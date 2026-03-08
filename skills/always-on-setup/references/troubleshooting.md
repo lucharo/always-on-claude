@@ -68,21 +68,39 @@ mutagen sync create \
 **Symptoms:** `Conflicts: N` in sync status
 
 **Causes:**
+- Daemon wasn't running (e.g., after reboot without `mutagen daemon register`) and both sides diverged
 - Same file modified on both machines
 - File type changed (e.g., file → symlink)
 
+**Most common case:** `.git/` internal files (index, logs, COMMIT_EDITMSG, etc.) diverge when both machines do git operations while sync is down. These are safe to resolve by picking one side.
+
 **Solutions:**
+
 ```bash
-# View conflict details
+# 1. View conflict details
 mutagen sync list -l
 
-# For each conflict, decide which version to keep
-# Then manually delete the unwanted version on one side
+# 2. Summarize conflicts by project
+mutagen sync list -l | grep "(alpha)" | sed 's/.*) //' | sed 's/ (.*//' | cut -d/ -f1-3 | sort | uniq -c | sort -rn
 
-# If many conflicts, may need to terminate and re-transfer
+# 3. Resolve by deleting the conflicting files on the NON-primary side
+#    (Mac is alpha/primary — delete arch's versions so Mac wins)
+ssh arch-lenovo "rm -rf /path/to/conflicting/.git"
+# Or for individual source files:
+ssh arch-lenovo "rm -f /path/to/conflicting/file.py"
+
+# 4. Flush to apply
+mutagen sync flush projects
+
+# 5. Repeat until Conflicts: 0
+
+# Nuclear option: terminate and recreate the session (clears all history)
+# Only needed if conflicts keep reappearing after resolution
 mutagen sync terminate projects
-# Delete on server, re-copy from client
+# Recreate with same config (see setup-scripts.md)
 ```
+
+**Prevention:** Run `mutagen daemon register` so the daemon auto-starts on login and sync never silently stops.
 
 ### Sync Error: "Too many levels of symbolic links"
 

@@ -233,6 +233,7 @@ mutagen sync create \
   --ignore=".DS_Store" \
   --ignore="*.log" \
   --ignore=".env" \
+  --ignore=".env.local" \
   ~/Projects server:/Users/luischavesrodriguez/Projects
 ```
 

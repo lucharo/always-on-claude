@@ -93,6 +93,10 @@ brew install mutagen-io/mutagen/mutagen
 echo "=== 2. Start Mutagen Daemon ==="
 mutagen daemon start
 
+echo "=== 2b. Register Daemon for Auto-Start ==="
+# Without this, Mutagen stops on reboot and files won't sync until manually restarted
+mutagen daemon register
+
 echo "=== 3. Add SSH Config ==="
 if ! grep -q "Host ${SERVER_HOST}" ~/.ssh/config 2>/dev/null; then
   cat >> ~/.ssh/config << EOF
@@ -148,7 +152,12 @@ mutagen sync create \
   --ignore="*.log" \
   --ignore=".env" \
   --ignore=".env.local" \
+  --ignore="pihole" \
+  --ignore="jellyfin" \
   ~/Projects ${SERVER_HOST}:${SERVER_PATH}
+
+# Note: Add project-specific ignores for server-only dirs with large logs/data
+# (e.g., pihole, jellyfin) that don't need to sync to your laptop
 
 echo "=== 7. Create Claude Config Sync ==="
 mutagen sync create \
