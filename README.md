@@ -2,7 +2,7 @@
 
 > **Now using [Happier](https://github.com/happier-dev/happier)!** This project previously used [Happy](https://github.com/happycoder/happy) as its session management CLI. Happy is no longer actively maintained — we've migrated to Happier, a fork with multi-backend support (Claude, Gemini, OpenCode, and more), cloud relay, and active development. For the original Happy-based setup, check out tag [`v1.0-happy`](../../tree/v1.0-happy).
 
-> **Take:** Clawdbot/Moltbot/OpenClaw aren't for me. I prefer an interface where I manage multiple threads rather than an agent managing them for me - visibility and control matter. Happier fills that gap perfectly.
+> **Take:** Clawdbot/Moltbot/OpenClaw aren't for me *yet*. I prefer an interface where I manage multiple threads rather than a single gateway agent managing them for me - visibility and control matter. That said, I get the vision: future models will be capable enough that delegating to one very good orchestrator agent will just work. We're not quite there, but getting close. For now, Happier fills the gap perfectly - I stay in control while still getting multi-backend flexibility.
 
 Sync your code between machines so you can start Claude sessions from anywhere - your laptop, a home server, or your phone.
 
