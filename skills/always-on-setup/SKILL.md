@@ -7,6 +7,8 @@ description: This skill should be used when the user asks to "set up an always-o
 
 Configure a secondary machine (server) within a Tailscale network for remote Claude Code sessions, with bidirectional sync and phone access via Happier CLI.
 
+**Adapt to your setup:** This guide documents a specific configuration (MacBook + old ThinkPad running Arch Linux). The concepts apply to any server — a DigitalOcean Droplet, Hetzner VM, Mac Mini, Raspberry Pi, etc. Paths, package managers, usernames, and partition layouts will differ. For example, our bind mount maps `/Users/luischavesrodriguez/Projects` because that's the macOS path — yours will be different. Use this as a reference, not a copy-paste script.
+
 **Important:** This setup is specifically designed for a secure Tailscale mesh network. All tools (Mutagen, SSH, Happier) operate within this private network. Do not expose these services to the public internet.
 
 ## Core Components
@@ -55,7 +57,7 @@ Happier is an actively maintained open-source fork of Happy with significant imp
 
 ### All Operations Within Tailscale
 
-Never expose SSH, Mutagen, or Happy to the public internet. Always access via Tailscale hostnames:
+Never expose SSH, Mutagen, or Happier to the public internet. Always access via Tailscale hostnames:
 
 ```bash
 # Correct - via Tailscale
