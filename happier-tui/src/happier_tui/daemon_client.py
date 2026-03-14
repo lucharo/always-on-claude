@@ -30,6 +30,7 @@ class Session:
     title: str | None = None
     cwd: str | None = None
     alive: bool = True
+    flavor: str = "claude"  # claude, codex, gemini, opencode, etc.
 
 
 def _find_happier_dir() -> Path:
@@ -164,6 +165,11 @@ def _enrich_session_sync(session: Session) -> None:
                 )
                 if match:
                     session.claude_session_id = match.group(1)
+                # Extract flavor/backend from metadata
+                flavor_match = re.search(r'"flavor":\s*"(\w+)"', text)
+                if flavor_match:
+                    session.flavor = flavor_match.group(1)
+                if match:
                     break
 
             # Fallback: search daemon log

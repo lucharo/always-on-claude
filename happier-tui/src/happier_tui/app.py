@@ -60,6 +60,7 @@ class SessionDetail(Static):
             f"  Happier ID:  [cyan]{s.happier_session_id}[/]",
             f"  Claude UUID: [cyan]{s.claude_session_id or 'unknown'}[/]",
             f"  PID:         [cyan]{s.pid}[/]",
+            f"  Agent:       [bold]{s.flavor}[/]",
             f"  Started by:  {s.started_by}",
             f"  Directory:   {s.cwd or 'unknown'}",
             f"  Status:      {status}",
@@ -126,7 +127,7 @@ class HappierTUI(App):
     def on_mount(self) -> None:
         table = self.query_one(DataTable)
         table.cursor_type = "row"
-        table.add_columns("", "ID", "PID", "Source", "Directory", "Title")
+        table.add_columns("", "ID", "PID", "Agent", "Source", "Directory", "Title")
         self.refresh_sessions()
         self.set_interval(5.0, self.refresh_sessions)
 
@@ -176,6 +177,7 @@ class HappierTUI(App):
                 status_icon,
                 short_id,
                 str(s.pid),
+                s.flavor,
                 source,
                 cwd,
                 title,
@@ -208,7 +210,7 @@ class HappierTUI(App):
             return
         resume_id = session.claude_session_id or session.happier_session_id
         cwd = session.cwd or os.path.expanduser("~")
-        self.exit(result=("resume-yolo", resume_id, cwd))
+        self.exit(result=("resume-yolo", resume_id, cwd, session.flavor))
 
     def action_resume_default(self) -> None:
         session = self._get_selected_session()
@@ -217,7 +219,7 @@ class HappierTUI(App):
             return
         resume_id = session.claude_session_id or session.happier_session_id
         cwd = session.cwd or os.path.expanduser("~")
-        self.exit(result=("resume-default", resume_id, cwd))
+        self.exit(result=("resume-default", resume_id, cwd, session.flavor))
 
     @work(exclusive=True)
     async def action_stop_selected(self) -> None:
@@ -260,13 +262,20 @@ def main() -> None:
         return
 
     if result[0] in ("resume-yolo", "resume-default"):
-        action, resume_id, cwd = result
+        action, resume_id, cwd, flavor = result
         if os.path.isdir(cwd):
             os.chdir(cwd)
+
+        # Build the right command based on agent/backend
+        # "happier" defaults to claude; other backends use "happier <backend>"
+        cmd = ["happier"]
+        if flavor and flavor != "claude":
+            cmd.append(flavor)  # e.g. "happier codex", "happier gemini"
+        cmd.extend(["--resume", resume_id])
         if action == "resume-yolo":
-            os.execvp("happier", ["happier", "--resume", resume_id, "--yolo"])
-        else:
-            os.execvp("happier", ["happier", "--resume", resume_id])
+            cmd.append("--yolo")
+
+        os.execvp("happier", cmd)
     elif result[0] == "new":
         os.execvp("happier", ["happier", "--yolo"])
     elif result[0] == "logs":
