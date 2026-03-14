@@ -184,23 +184,40 @@ def _enrich_session_sync(session: Session) -> None:
         except OSError:
             pass
 
-    # 2. Find title from Claude session JSONL
+    # 2. Find title and cwd from Claude session JSONL
     if session.claude_session_id:
-        # Search all project dirs for the session file
         claude_dir = Path.home() / ".claude" / "projects"
         if claude_dir.exists():
             for project_dir in claude_dir.iterdir():
                 session_file = project_dir / f"{session.claude_session_id}.jsonl"
                 if session_file.exists():
                     _extract_title(session, session_file)
+                    # Derive cwd from project dir name (e.g. "-home-luis" -> "/home/luis")
+                    if not session.cwd:
+                        session.cwd = _decode_project_dir(project_dir.name)
                     break
 
-    # 3. Get cwd from /proc
+    # 3. Get cwd from /proc (overrides derived path if available)
     try:
         cwd = os.readlink(f"/proc/{session.pid}/cwd")
         session.cwd = _normalize_path(cwd)
     except OSError:
         pass
+
+
+def _decode_project_dir(dirname: str) -> str | None:
+    """Decode a Claude project dir name back to a path.
+
+    Claude encodes paths like /home/luis → -home-luis
+    """
+    if not dirname or dirname == "-":
+        return None
+    # Replace leading dash and internal dashes with /
+    path = dirname.replace("-", "/")
+    # The encoding replaces / with -, so /home/luis becomes -home-luis
+    if not path.startswith("/"):
+        path = "/" + path
+    return path if os.path.isdir(path) else None
 
 
 def _extract_title(session: Session, session_file: Path) -> None:

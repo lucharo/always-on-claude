@@ -207,7 +207,8 @@ class HappierTUI(App):
             self.notify("No session selected", severity="warning")
             return
         resume_id = session.claude_session_id or session.happier_session_id
-        self.exit(result=("resume-yolo", resume_id))
+        cwd = session.cwd or os.path.expanduser("~")
+        self.exit(result=("resume-yolo", resume_id, cwd))
 
     def action_resume_default(self) -> None:
         session = self._get_selected_session()
@@ -215,7 +216,8 @@ class HappierTUI(App):
             self.notify("No session selected", severity="warning")
             return
         resume_id = session.claude_session_id or session.happier_session_id
-        self.exit(result=("resume-default", resume_id))
+        cwd = session.cwd or os.path.expanduser("~")
+        self.exit(result=("resume-default", resume_id, cwd))
 
     @work(exclusive=True)
     async def action_stop_selected(self) -> None:
@@ -257,16 +259,18 @@ def main() -> None:
     if result is None:
         return
 
-    action, value = result
-
-    if action == "resume-yolo":
-        os.execvp("happier", ["happier", "--resume", value, "--yolo"])
-    elif action == "resume-default":
-        os.execvp("happier", ["happier", "--resume", value])
-    elif action == "new":
+    if result[0] in ("resume-yolo", "resume-default"):
+        action, resume_id, cwd = result
+        if os.path.isdir(cwd):
+            os.chdir(cwd)
+        if action == "resume-yolo":
+            os.execvp("happier", ["happier", "--resume", resume_id, "--yolo"])
+        else:
+            os.execvp("happier", ["happier", "--resume", resume_id])
+    elif result[0] == "new":
         os.execvp("happier", ["happier", "--yolo"])
-    elif action == "logs":
-        os.execvp("less", ["less", "+G", value])
+    elif result[0] == "logs":
+        os.execvp("less", ["less", "+G", result[1]])
 
 
 if __name__ == "__main__":
