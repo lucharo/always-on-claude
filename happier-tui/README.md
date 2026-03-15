@@ -48,18 +48,31 @@ This is the ambitious one. For it to work:
 
 If any of these fail, the TUI tells you exactly why ("Directory not found: /home/luis", "codex not installed locally").
 
+## Cross-device session continuity
+
+What works today and what doesn't:
+
+| From → To | How | Works? |
+|-----------|-----|--------|
+| **MacBook → Phone** | Phone app sends messages through relay stream API — no local files needed | Yes |
+| **Arch → MacBook** | TUI ChatScreen reads history + sends messages through relay | Yes |
+| **MacBook → Arch (local resume)** | Only if `.jsonl` is synced via Mutagen AND path exists locally | Partial (~/Projects/ only) |
+| **Start on Mac, go offline, pick up on Arch** | Relay has the history but no mechanism to reconstruct `.jsonl` on arch | **Not yet** |
+
+The missing piece is **conversation sync**: pulling history from the relay, reconstructing it as a `.jsonl` in the format the agent expects (`~/.claude/projects/<encoded-path>/<session-id>.jsonl` for Claude Code), and placing it so `happier --resume` can find it. This would enable true device-agnostic session continuity.
+
 ## Keybindings
 
 | Key     | Action                              |
 |---------|-------------------------------------|
 | Enter   | Resume local / open remote chat     |
-| R       | Try local resume (any session)      |
-| a       | Toggle active-only filter           |
+| R       | Local resume (blocked if not possible) |
+| a       | Toggle active/running filter        |
 | /       | Search by title or path             |
+| i       | Toggle detail sidebar               |
 | r       | Refresh session list                |
 | s       | Stop selected session               |
 | n       | New session                         |
-| l       | View logs (local sessions only)     |
 | q       | Quit                                |
 
 ## Install & run

@@ -142,10 +142,15 @@ class SessionDetail(Static):
             pid_status = "[green]alive[/]" if s.local_alive else "[red]dead[/]"
             lines.append(f"[dim]PID[/]     {s.local_pid} {pid_status}")
         lines.append("")
+
+        # Resume availability
+        ok, reason = can_resume_locally(s)
         if is_local:
             lines.append("[dim]Enter: resume  R: resume (yolo)[/]")
-        else:
+        elif ok:
             lines.append("[dim]Enter: chat view  R: local resume[/]")
+        else:
+            lines.append(f"[dim]Enter: chat view[/]  [red]R: blocked ({reason})[/]")
 
         return "\n".join(lines)
 
@@ -174,14 +179,13 @@ class HappierTUI(App):
         border: round yellow;
     }
     #detail-panel {
-        width: 38;
-        display: none;
+        width: 40;
         padding: 1;
         border-left: solid $primary-darken-2;
         background: $surface;
     }
-    #detail-panel.visible {
-        display: block;
+    #detail-panel.hidden {
+        display: none;
     }
     DataTable {
         height: 1fr;
@@ -210,7 +214,7 @@ class HappierTUI(App):
 
     BINDINGS = [
         Binding("r", "refresh", "Refresh"),
-        Binding("enter", "select_session", "Open"),
+        Binding("enter", "select_session", "Open", priority=True),
         Binding("R", "resume_local", "Resume local"),
         Binding("a", "toggle_active", "Active/all"),
         Binding("slash", "search", "Search"),
@@ -238,7 +242,7 @@ class HappierTUI(App):
         table = self.query_one(DataTable)
         table.cursor_type = "row"
         table.zebra_stripes = True
-        table.add_columns("", "Host", "Title", "Directory", "Updated")
+        table.add_columns("", "Host", "Agent", "Title", "Directory", "Updated")
         self.refresh_sessions()
         self.set_interval(5.0, self.refresh_sessions)
 
@@ -350,12 +354,14 @@ class HappierTUI(App):
                 else:
                     title_display = f"[dim italic]{title}[/]"
 
+                agent = f"[dim]{s.flavor}[/]"
                 path = _shorten_path(s.path or "?")
                 updated = relative_time(s.updated_at)
 
                 table.add_row(
                     icon,
                     host_display,
+                    agent,
                     title_display,
                     path,
                     updated,
@@ -406,10 +412,10 @@ class HappierTUI(App):
     def action_toggle_detail(self) -> None:
         """Toggle the detail sidebar."""
         panel = self.query_one("#detail-panel")
-        if panel.has_class("visible"):
-            panel.remove_class("visible")
+        if panel.has_class("hidden"):
+            panel.remove_class("hidden")
         else:
-            panel.add_class("visible")
+            panel.add_class("hidden")
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id == "search-bar":
