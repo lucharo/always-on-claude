@@ -26,28 +26,69 @@ from happier_tui.client import (
 )
 
 
+def _infer_source(session: Session) -> str:
+    """Infer whether session was started from phone, terminal, or daemon."""
+    if session.started_by:
+        sb = session.started_by.lower()
+        if "terminal" in sb:
+            return "terminal"
+        if "daemon" in sb:
+            return "daemon"
+    # Heuristic: /home/luis with no specific project path → likely phone
+    if session.path and session.path in ("/home/luis", os.path.expanduser("~")):
+        return "phone"
+    return "terminal"
+
+
+def _shorten_path(path: str) -> str:
+    """Shorten paths for display."""
+    if not path or path == "?":
+        return "?"
+    home = os.path.expanduser("~")
+    if path.startswith(home):
+        path = "~" + path[len(home):]
+    path = path.replace("/Users/luischavesrodriguez/", "~/")
+    path = path.replace("/home/luis/", "~/")
+    # Further shorten ~/Projects/ to ~/P/
+    path = path.replace("~/Projects/", "~/P/")
+    return path
+
+
 class StatusBar(Static):
-    """Shows relay + daemon status."""
+    """Shows relay + daemon status and active filter state."""
 
     daemon_running: reactive[bool] = reactive(False)
     relay_ok: reactive[bool] = reactive(False)
-    session_count: reactive[int] = reactive(0)
+    total_count: reactive[int] = reactive(0)
+    visible_count: reactive[int] = reactive(0)
+    active_count: reactive[int] = reactive(0)
     host_counts: reactive[dict] = reactive({})
+    filter_label: reactive[str] = reactive("all")
 
     def render(self) -> str:
         parts = []
         if self.relay_ok:
-            parts.append("[bold green]● Relay connected[/]")
+            parts.append("[bold green]● Relay[/]")
         else:
             parts.append("[bold red]● Relay offline[/]")
         if self.daemon_running:
             parts.append("[green]● Daemon[/]")
+
+        # Counts
+        if self.filter_label == "all":
+            parts.append(f"[bold]{self.visible_count}[/] sessions")
         else:
-            parts.append("[dim]● No daemon[/]")
-        parts.append(f"Sessions: [bold]{self.session_count}[/]")
+            parts.append(
+                f"[bold]{self.visible_count}[/]/{self.total_count} "
+                f"[yellow]filter: {self.filter_label}[/]"
+            )
+
+        parts.append(f"[green]{self.active_count} active[/]")
+
         if self.host_counts:
             host_parts = [f"{h}: {c}" for h, c in sorted(self.host_counts.items())]
             parts.append(f"[dim]({', '.join(host_parts)})[/]")
+
         return "  ".join(parts)
 
 
@@ -65,34 +106,37 @@ class SessionDetail(Static):
         is_local = s.host and s.host.lower() == local_hostname
 
         if s.active:
-            status = "[bold green]active[/]"
+            status = "[bold green]● active[/]"
         else:
-            status = "[dim]inactive[/]"
+            status = "[dim]○ inactive[/]"
         if is_local and s.local_pid:
             if s.local_alive:
                 status += f" [green](PID {s.local_pid})[/]"
             else:
                 status += f" [red](PID {s.local_pid} dead)[/]"
 
+        source = _infer_source(s)
+
         lines = [
             "[bold]Session Details[/]",
             "",
             f"  Relay ID:    [cyan]{s.relay_id}[/]",
             f"  Host:        [bold]{'[green]' if is_local else '[cyan]'}{s.host or '?'}[/]",
-            f"  Directory:   {s.path or 'unknown'}",
             f"  Status:      {status}",
+            f"  Source:      {source}",
+            f"  Directory:   {s.path or 'unknown'}",
             f"  Updated:     {relative_time(s.updated_at)}",
             f"  Created:     {relative_time(s.created_at)}",
         ]
         if s.title:
             lines.append(f"  Title:       [bold]{s.title}[/]")
         if s.pending_count:
-            lines.append(f"  Pending:     [yellow]{s.pending_count}[/]")
+            lines.append(f"  Pending:     [yellow]{s.pending_count} messages[/]")
         lines.append("")
         if is_local:
-            lines.append(f"  [dim]Resume:[/] happier --resume {s.relay_id} --yolo")
+            lines.append(f"  [dim]Enter: resume locally  |  R: resume (--yolo)[/]")
         else:
-            lines.append(f"  [dim]Enter to open chat  |  R to try local resume[/]")
+            lines.append(f"  [dim]Enter: open chat view  |  R: try local resume[/]")
 
         return "\n".join(lines)
 
@@ -114,6 +158,15 @@ class HappierTUI(App):
     #session-table {
         height: 1fr;
         border: round $primary;
+    }
+    #empty-message {
+        height: 1fr;
+        content-align: center middle;
+        text-align: center;
+        display: none;
+    }
+    #empty-message.visible {
+        display: block;
     }
     #detail-panel {
         height: auto;
@@ -155,16 +208,17 @@ class HappierTUI(App):
     def compose(self) -> ComposeResult:
         yield Header()
         yield StatusBar(id="status-bar")
-        yield Input(placeholder="Search by title…", id="search-bar")
+        yield Input(placeholder="Search by title or path…", id="search-bar")
         with Vertical():
             yield DataTable(id="session-table")
+            yield Static(id="empty-message")
             yield SessionDetail(id="detail-panel")
         yield Footer()
 
     def on_mount(self) -> None:
         table = self.query_one(DataTable)
         table.cursor_type = "row"
-        table.add_columns("", "Host", "Updated", "Directory", "Title")
+        table.add_columns("", "Status", "Host", "Source", "Updated", "Directory", "Title")
         self.refresh_sessions()
         self.set_interval(5.0, self.refresh_sessions)
 
@@ -189,63 +243,97 @@ class HappierTUI(App):
         self.sessions = sessions
         self._sessions_by_id = {s.relay_id: s for s in sessions}
 
+        # Count active across all sessions
+        active_count = sum(1 for s in sessions if s.active)
+        status_bar.active_count = active_count
+        status_bar.total_count = len(sessions)
+
         # Apply filters
         visible = sessions
+        filter_parts = []
         if self._show_active_only:
             visible = [s for s in visible if s.active]
+            filter_parts.append("active")
         if self._search_query:
             q = self._search_query.lower()
-            visible = [s for s in visible if q in (s.title or "").lower() or q in (s.path or "").lower()]
+            visible = [
+                s for s in visible
+                if q in (s.title or "").lower() or q in (s.path or "").lower()
+            ]
+            filter_parts.append(f'"{self._search_query}"')
 
-        status_bar.session_count = len(visible)
+        status_bar.filter_label = " + ".join(filter_parts) if filter_parts else "all"
+        status_bar.visible_count = len(visible)
+
         host_counts: dict[str, int] = {}
         for s in visible:
             h = s.host or "?"
             host_counts[h] = host_counts.get(h, 0) + 1
         status_bar.host_counts = host_counts
 
+        # Show/hide empty message
+        empty_msg = self.query_one("#empty-message", Static)
         table = self.query_one(DataTable)
-        table.clear()
 
-        local_hostname = get_local_hostname()
-        home = os.path.expanduser("~")
-
-        for s in visible:
-            # Status icon
-            if s.active:
-                status_icon = "[bold green]●[/]"
-            elif s.local_alive:
-                status_icon = "[green]○[/]"
+        if not visible:
+            table.display = False
+            empty_msg.add_class("visible")
+            if self._show_active_only and active_count == 0:
+                empty_msg.update(
+                    f"[dim]No active sessions right now[/]\n"
+                    f"[dim]{len(sessions)} inactive sessions hidden — press [bold]a[/bold] to show all[/]"
+                )
+            elif self._search_query:
+                empty_msg.update(
+                    f'[dim]No sessions matching "{self._search_query}"[/]\n'
+                    f"[dim]Press [bold]/[/bold] to clear search[/]"
+                )
             else:
-                status_icon = "[dim]○[/]"
+                empty_msg.update("[dim]No sessions found[/]")
+        else:
+            table.display = True
+            empty_msg.remove_class("visible")
+            table.clear()
 
-            # Host with color
-            host = s.host or "?"
-            is_local = host.lower() == local_hostname
-            if is_local:
-                host_display = f"[green]{host}[/]"
-            else:
-                host_display = f"[cyan]{host}[/]"
+            local_hostname = get_local_hostname()
 
-            # Path: shorten home dir
-            path = s.path or "?"
-            if path.startswith(home):
-                path = "~" + path[len(home):]
-            # Also shorten common prefixes
-            path = path.replace("/Users/luischavesrodriguez/", "~/")
-            path = path.replace("/home/luis/", "~/")
+            for s in visible:
+                # Status icon + label
+                if s.active:
+                    icon = "[bold green]●[/]"
+                    status_label = "[green]active[/]"
+                else:
+                    icon = "[dim]○[/]"
+                    status_label = "[dim]inactive[/]"
 
-            title = (s.title or "")[:50]
-            updated = relative_time(s.updated_at)
+                # Host with color
+                host = s.host or "?"
+                is_local = host.lower() == local_hostname
+                host_display = f"[green]{host}[/]" if is_local else f"[cyan]{host}[/]"
 
-            table.add_row(
-                status_icon,
-                host_display,
-                updated,
-                path,
-                title,
-                key=s.relay_id,
-            )
+                # Source
+                source = _infer_source(s)
+                if source == "phone":
+                    source_display = "[yellow]phone[/]"
+                elif source == "daemon":
+                    source_display = "[blue]daemon[/]"
+                else:
+                    source_display = "[dim]term[/]"
+
+                path = _shorten_path(s.path or "?")
+                title = (s.title or "[dim]untitled[/]")[:50]
+                updated = relative_time(s.updated_at)
+
+                table.add_row(
+                    icon,
+                    status_label,
+                    host_display,
+                    source_display,
+                    updated,
+                    path,
+                    title,
+                    key=s.relay_id,
+                )
 
     def _get_selected_session(self) -> Session | None:
         table = self.query_one(DataTable)
@@ -269,8 +357,10 @@ class HappierTUI(App):
     def action_toggle_active(self) -> None:
         """Toggle showing only active sessions."""
         self._show_active_only = not self._show_active_only
-        label = "active only" if self._show_active_only else "all"
-        self.notify(f"Filter: {label}")
+        if self._show_active_only:
+            self.notify("Showing active sessions only", severity="information")
+        else:
+            self.notify("Showing all sessions", severity="information")
         self.refresh_sessions()
 
     def action_search(self) -> None:
@@ -293,7 +383,7 @@ class HappierTUI(App):
             self.refresh_sessions()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
-        """Close search bar on Enter."""
+        """Close search bar on Enter, keep filter active."""
         if event.input.id == "search-bar":
             event.input.remove_class("visible")
             self.query_one(DataTable).focus()
@@ -309,11 +399,9 @@ class HappierTUI(App):
         is_local = session.host and session.host.lower() == local_hostname
 
         if is_local:
-            # Local session: resume directly
             cwd = session.path or os.path.expanduser("~")
             self.exit(result=("resume-yolo", session.relay_id, cwd, session.flavor))
         else:
-            # Remote session: open chat screen
             from happier_tui.chat_screen import ChatScreen
             self.push_screen(ChatScreen(session))
 
@@ -330,7 +418,6 @@ class HappierTUI(App):
             return
 
         cwd = session.path or os.path.expanduser("~")
-        # Normalize path for this machine
         cwd = _normalize_path_for_local(cwd)
         self.exit(result=("resume-yolo", session.relay_id, cwd, session.flavor))
 
@@ -356,7 +443,7 @@ class HappierTUI(App):
             self.notify("No session selected", severity="warning")
             return
         if not session.local_pid:
-            self.notify("No local PID — logs only available for local sessions", severity="warning")
+            self.notify("Logs only available for local sessions", severity="warning")
             return
         from pathlib import Path
         logs_dir = Path.home() / ".happier" / "logs"
