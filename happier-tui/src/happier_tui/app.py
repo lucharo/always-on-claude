@@ -479,14 +479,15 @@ class HappierTUI(App):
         try:
             jsonl_path, count = await sync_session_locally(session)
             self.notify(f"Synced {count} messages → {jsonl_path.name}")
-        except RuntimeError as e:
+        except Exception as e:
             self.notify(f"Sync failed: {e}", severity="error")
             return
 
         cwd = normalize_path_for_local(session.path or os.path.expanduser("~"))
-        # The session UUID is the JSONL filename (without .jsonl)
+        # Resume directly via claude (not happier) since we generated a
+        # new session UUID that happier's relay doesn't know about
         resume_id = jsonl_path.stem
-        self.exit(result=("resume-yolo", resume_id, cwd, session.flavor))
+        self.exit(result=("resume-synced", resume_id, cwd, session.flavor))
 
     @work(exclusive=True)
     async def action_stop_selected(self) -> None:
@@ -528,6 +529,16 @@ def main() -> None:
             cmd.append("--yolo")
 
         os.execvp("happier", cmd)
+    elif result[0] == "resume-synced":
+        # Synced from relay — resume directly via the agent binary
+        # (not happier, since the relay doesn't know this session UUID)
+        _, resume_id, cwd, flavor = result
+        if os.path.isdir(cwd):
+            os.chdir(cwd)
+
+        agent = flavor or "claude"
+        cmd = [agent, "--resume", resume_id]
+        os.execvp(agent, cmd)
     elif result[0] == "new":
         os.execvp("happier", ["happier", "--yolo"])
     elif result[0] == "logs":
