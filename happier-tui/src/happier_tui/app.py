@@ -82,8 +82,8 @@ class StatusBar(Static):
 
     def render(self) -> str:
         # Connection indicators — use symbols + text, not just color
-        relay = "[bold green]● relay ok[/]" if self.relay_ok else "[bold red]✗ relay down[/]"
-        daemon = "  [bold]● daemon ok[/]" if self.daemon_running else "  [dim]daemon off[/]"
+        relay = "[bold green]✓ relay[/]" if self.relay_ok else "[bold red]✗ relay[/]"
+        daemon = "  [bold green]✓ daemon[/]" if self.daemon_running else "  [dim]✗ daemon[/]"
 
         # Counts
         counts = f"{self.visible_count} sessions"
