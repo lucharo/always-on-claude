@@ -55,12 +55,22 @@ flowchart TB
 
 ## Cross-device sessions
 
+### Why the relay matters
+
+In v1/v2, conversations lived as `.jsonl` files on whichever machine ran the session. To continue a conversation on another device, you had to physically transfer those files (via Mutagen sync or manual SCP). This was fragile — race conditions, stale state, merge conflicts.
+
+Happier's relay changes this fundamentally. The relay server maintains conversation state in a Postgres database, and devices communicate via a socket.io protocol with E2E encryption. When you start a session on your server, the relay holds the running state. Any authenticated device can connect to that session through the relay — your phone, your laptop, another server — without needing the `.jsonl` files locally. The conversation history lives in the relay, not on disk.
+
+This is the key insight that made v3 possible: **we don't need to sync conversation files between machines anymore.** Mutagen handles code, the relay handles conversations. Each tool does one job.
+
+### What works today
+
 With Happier daemon running on both your server and MacBook, conversations sync through the relay server:
 
 | Scenario | Works? |
 |----------|--------|
-| Start on phone, continue on laptop | ✅ |
-| Start on laptop, continue on server | ✅ |
+| Start on phone, continue on laptop | ✅ (via Happier app/web) |
+| Start on laptop, continue on server | ✅ (via relay) |
 | See all sessions from any device | ✅ |
 
 ```bash
@@ -68,6 +78,10 @@ happier session list              # see all sessions from any device
 happier resume                    # interactive session picker
 happier resume <session-id>       # resume specific session
 ```
+
+### What's still missing
+
+The relay API has the primitives (`session run stream-start`, `stream-read`, `stream-cancel`) but there's no terminal-native way to attach to a remote session. The Happier iOS and web apps can do it, but from a laptop terminal you can't yet "pick up" a session that's running on your server without going through the phone/web UI. This is why we're building a [lightweight TUI](happier-tui/) to bridge that gap.
 
 ## The bind mount
 
@@ -244,8 +258,8 @@ This is convenient but means any process running as your user gets root access. 
 ## Evolution
 
 - **v1** (Happy CLI) — original setup, Happy is no longer maintained
-- **v2** (Happier CLI) — migrated to Happier fork, documented session sync as a limitation
-- **v3** — discovered Happier's relay server already solves session sync across devices. See [issue #1](../../issues/1) for the original investigation.
+- **v2** (Happier CLI) — migrated to Happier fork, documented session sync as a limitation. We tried syncing `~/.claude` via Mutagen to share JSONL session files between machines — this caused race conditions and was the root of most sync bugs.
+- **v3** — realized Happier's relay server already solves session sync. Conversations are stored E2E encrypted in the relay's Postgres database and streamed via socket.io — no need to transfer JSONL files between machines. Removed the `~/.claude` Mutagen sync and the manual `conversation-transfer` skill. See [issue #1](../../issues/1) for the original investigation.
 
 ## Alternatives
 
