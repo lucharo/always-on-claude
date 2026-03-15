@@ -6,7 +6,7 @@ from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import Screen
-from textual.widgets import Footer, Header, Input, RichLog, Static
+from textual.widgets import Footer, Input, RichLog, Static
 
 from happier_tui.client import (
     Session,
@@ -20,8 +20,20 @@ from happier_tui.client import (
 )
 
 
+def _shorten_path(path: str) -> str:
+    import os
+    if not path:
+        return "?"
+    home = os.path.expanduser("~")
+    if path.startswith(home):
+        path = "~" + path[len(home):]
+    path = path.replace("/Users/luischavesrodriguez/", "~/")
+    path = path.replace("/home/luis/", "~/")
+    return path
+
+
 class ChatStatus(Static):
-    """Status bar showing session info."""
+    """Compact status bar for the chat screen."""
 
     def __init__(self, session: Session) -> None:
         super().__init__()
@@ -29,10 +41,11 @@ class ChatStatus(Static):
 
     def render(self) -> str:
         s = self._session
-        status = "[bold green]active[/]" if s.active else "[dim]inactive[/]"
-        host = f"[cyan]{s.host}[/]" if s.host else "?"
-        title = f"  [bold]{s.title}[/]" if s.title else ""
-        return f"{host}  {status}  {relative_time(s.updated_at)}{title}"
+        icon = "[green]●[/]" if s.active else "[dim]○[/]"
+        host = f"[bold]{s.host}[/]" if s.host else "?"
+        title = s.title or "untitled"
+        path = _shorten_path(s.path or "?")
+        return f"{icon} {host}  [bold]{title}[/]  [dim]{path}[/]"
 
 
 class ChatScreen(Screen):
@@ -47,15 +60,17 @@ class ChatScreen(Screen):
         layout: vertical;
     }
     #chat-status {
-        height: 3;
-        padding: 1;
+        height: 1;
+        padding: 0 1;
         background: $surface;
-        border-bottom: solid $primary;
     }
     #chat-log {
         height: 1fr;
         border: round $primary;
         padding: 0 1;
+    }
+    #chat-log.read-only {
+        border: round $error-darken-2;
     }
     #chat-input {
         dock: bottom;
@@ -70,11 +85,10 @@ class ChatScreen(Screen):
         self._run_id: str | None = None
 
     def compose(self) -> ComposeResult:
-        yield Header()
         yield ChatStatus(self._session, id="chat-status")
         yield RichLog(id="chat-log", highlight=True, markup=True, wrap=True)
         yield Input(
-            placeholder="Type a message (Enter to send, Escape to go back)…",
+            placeholder="Type a message…",
             id="chat-input",
         )
         yield Footer()
@@ -83,7 +97,10 @@ class ChatScreen(Screen):
         self.load_history()
         if not self._session.active:
             log = self.query_one(RichLog)
-            log.write("[dim italic]Session is inactive — history is read-only[/]")
+            log.write("")
+            log.write("[yellow on default] READ ONLY [/] [dim]Session is inactive — history only[/]")
+            log.write("")
+            self.query_one("#chat-log").add_class("read-only")
             self.query_one(Input).disabled = True
 
     @work(exclusive=True, group="history")
@@ -100,23 +117,30 @@ class ChatScreen(Screen):
             log.write("[dim]No messages yet[/]")
             return
 
+        prev_role = None
         for msg in messages:
-            self._render_message(log, msg)
+            self._render_message(log, msg, prev_role)
+            prev_role = msg["role"]
 
-    def _render_message(self, log: RichLog, msg: dict) -> None:
-        """Render a single message to the RichLog."""
+    def _render_message(self, log: RichLog, msg: dict, prev_role: str | None = None) -> None:
+        """Render a message with turn-based separators."""
         role = msg["role"]
         text = msg["text"]
         kind = msg.get("kind", "text")
 
+        # Separator between turns (user → assistant → user)
+        if role == "user" and prev_role == "assistant":
+            log.write("[dim]" + "─" * 60 + "[/]")
+            log.write("")
+
         if role == "user":
-            log.write(f"[bold cyan]You:[/] {text}")
+            log.write(f"[bold cyan]> {text}[/]")
         elif role == "assistant":
             if kind == "tool_use":
-                log.write(f"  [dim]{text}[/]")
+                log.write(f"  [dim]┊ {text}[/]")
             else:
-                log.write(f"[bold green]Claude:[/] {text}")
-        log.write("")  # blank line between messages
+                log.write(f"  {text}")
+                log.write("")
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         """Send a message when Enter is pressed."""
@@ -126,7 +150,12 @@ class ChatScreen(Screen):
 
         event.input.clear()
         log = self.query_one(RichLog)
-        log.write(f"[bold cyan]You:[/] {message}")
+
+        # Separator before new user turn
+        log.write("")
+        log.write("[dim]" + "─" * 60 + "[/]")
+        log.write("")
+        log.write(f"[bold cyan]> {message}[/]")
         log.write("")
 
         self._send_message(message)
@@ -178,9 +207,11 @@ class ChatScreen(Screen):
             done = data.get("done", False)
 
             if done:
+                log.write("")
+                log.write("[dim]─── done ───[/]")
+                log.write("")
                 break
             if new_cursor == cursor and not events:
-                # No new data, wait before polling again
                 import asyncio
                 await asyncio.sleep(0.5)
             cursor = new_cursor
@@ -197,18 +228,13 @@ class ChatScreen(Screen):
         if event_type == "text":
             text = event.get("text", "")
             if text.strip():
-                log.write(f"[bold green]Claude:[/] {text}")
+                log.write(f"  {text}")
         elif event_type == "tool_use":
             name = event.get("name", "?")
-            log.write(f"  [dim]Using {name}…[/]")
-        elif event_type == "tool_result":
-            pass  # skip tool results in display
+            log.write(f"  [dim]┊ Using {name}…[/]")
         elif event_type == "error":
             error = event.get("error", "Unknown error")
             log.write(f"[red]Error: {error}[/]")
-        elif event_type == "done":
-            log.write("[dim]─── Response complete ───[/]")
-            log.write("")
 
     def action_go_back(self) -> None:
         """Return to session list, cancelling any active stream."""
