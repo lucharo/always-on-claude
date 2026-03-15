@@ -445,7 +445,7 @@ class HappierTUI(App):
             self.push_screen(ChatScreen(session))
 
     def action_resume_local(self) -> None:
-        """R: try to resume any session locally."""
+        """R: resume any session locally (syncs conversation first if remote)."""
         session = self._get_selected_session()
         if not session:
             self.notify("No session selected", severity="warning")
@@ -456,9 +456,34 @@ class HappierTUI(App):
             self.notify(f"Cannot resume locally: {reason}", severity="error")
             return
 
-        cwd = session.path or os.path.expanduser("~")
-        cwd = _normalize_path_for_local(cwd)
-        self.exit(result=("resume-yolo", session.relay_id, cwd, session.flavor))
+        local_hostname = get_local_hostname()
+        is_local = session.host and session.host.lower() == local_hostname
+
+        if is_local:
+            cwd = session.path or os.path.expanduser("~")
+            cwd = _normalize_path_for_local(cwd)
+            self.exit(result=("resume-yolo", session.relay_id, cwd, session.flavor))
+        else:
+            # Remote session: sync conversation from relay first
+            self._sync_and_resume(session)
+
+    @work(exclusive=True)
+    async def _sync_and_resume(self, session: Session) -> None:
+        """Sync conversation from relay and then resume locally."""
+        from happier_tui.sync import sync_session_locally
+
+        self.notify("Syncing conversation from relay…")
+        try:
+            jsonl_path, count = await sync_session_locally(session)
+            self.notify(f"Synced {count} messages → {jsonl_path.name}")
+        except RuntimeError as e:
+            self.notify(f"Sync failed: {e}", severity="error")
+            return
+
+        cwd = _normalize_path_for_local(session.path or os.path.expanduser("~"))
+        # The session UUID is the JSONL filename (without .jsonl)
+        resume_id = jsonl_path.stem
+        self.exit(result=("resume-yolo", resume_id, cwd, session.flavor))
 
     @work(exclusive=True)
     async def action_stop_selected(self) -> None:
