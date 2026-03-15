@@ -387,14 +387,14 @@ def can_resume_locally(session: Session) -> tuple[bool, str]:
     # Check directory exists
     if session.path:
         # Normalize path for this machine
-        local_path = _normalize_path_for_local(session.path)
+        local_path = normalize_path_for_local(session.path)
         if not os.path.isdir(local_path):
             return False, f"Directory not found: {local_path}"
 
     return True, ""
 
 
-def _normalize_path_for_local(p: str) -> str:
+def normalize_path_for_local(p: str) -> str:
     """Normalize a path from the relay to work on this machine."""
     import sys
 

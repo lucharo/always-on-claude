@@ -11,7 +11,7 @@ import pytest_asyncio
 
 from happier_tui.client import (
     Session,
-    _normalize_path_for_local,
+    normalize_path_for_local,
     _summarize_tool_use,
     can_resume_locally,
     get_local_hostname,
@@ -204,7 +204,7 @@ def test_can_resume_no_path():
 
 
 # ---------------------------------------------------------------------------
-# _normalize_path_for_local
+# normalize_path_for_local
 # ---------------------------------------------------------------------------
 
 
@@ -213,9 +213,9 @@ def test_normalize_path_passthrough():
     import sys
 
     if sys.platform == "darwin":
-        assert _normalize_path_for_local("/Users/someone/Projects") == "/Users/someone/Projects"
+        assert normalize_path_for_local("/Users/someone/Projects") == "/Users/someone/Projects"
     elif sys.platform == "linux":
-        assert _normalize_path_for_local("/home/someone/Projects") == "/home/someone/Projects"
+        assert normalize_path_for_local("/home/someone/Projects") == "/home/someone/Projects"
 
 
 # ---------------------------------------------------------------------------

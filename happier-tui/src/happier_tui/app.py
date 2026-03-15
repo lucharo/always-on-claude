@@ -22,7 +22,7 @@ from happier_tui.client import (
     relative_time,
     relay_list_sessions,
     stop_session,
-    _normalize_path_for_local,
+    normalize_path_for_local,
 )
 
 
@@ -461,7 +461,7 @@ class HappierTUI(App):
 
         if is_local:
             cwd = session.path or os.path.expanduser("~")
-            cwd = _normalize_path_for_local(cwd)
+            cwd = normalize_path_for_local(cwd)
             self.exit(result=("resume-yolo", session.relay_id, cwd, session.flavor))
         else:
             # Remote session: sync conversation from relay first
@@ -480,7 +480,7 @@ class HappierTUI(App):
             self.notify(f"Sync failed: {e}", severity="error")
             return
 
-        cwd = _normalize_path_for_local(session.path or os.path.expanduser("~"))
+        cwd = normalize_path_for_local(session.path or os.path.expanduser("~"))
         # The session UUID is the JSONL filename (without .jsonl)
         resume_id = jsonl_path.stem
         self.exit(result=("resume-yolo", resume_id, cwd, session.flavor))

@@ -20,7 +20,7 @@ from pathlib import Path
 from happier_tui.client import (
     Session,
     get_session_history,
-    _normalize_path_for_local,
+    normalize_path_for_local,
 )
 
 
@@ -121,18 +121,15 @@ def relay_to_jsonl_lines(
                 stop_reason = api_message.get("stop_reason")
                 usage = api_message.get("usage", {})
 
-                # Split each content block into its own JSONL line
-                for i, block in enumerate(content_blocks):
-                    if not isinstance(block, dict):
-                        continue
+                # Filter to emittable blocks (skip thinking)
+                emittable = [
+                    b for b in content_blocks
+                    if isinstance(b, dict) and b.get("type") != "thinking"
+                ]
 
+                for i, block in enumerate(emittable):
                     block_type = block.get("type", "")
-                    # Skip thinking blocks — they're not needed for resume
-                    # and contain signatures that won't validate
-                    if block_type == "thinking":
-                        continue
-
-                    is_last = (i == len(content_blocks) - 1)
+                    is_last = (i == len(emittable) - 1)
                     line_uuid = _make_uuid()
 
                     line = {
@@ -197,7 +194,7 @@ def jsonl_path_for_session(
 
     # Determine the working directory path (normalized for this machine)
     cwd = session.path or "/"
-    local_cwd = _normalize_path_for_local(cwd)
+    local_cwd = normalize_path_for_local(cwd)
 
     # Encode the path as a project directory name
     project_dir_name = _encode_project_dir(local_cwd)
@@ -228,7 +225,7 @@ async def sync_session_locally(
         raise RuntimeError("No history returned from relay")
 
     # Determine local working directory
-    cwd = _normalize_path_for_local(session.path or "/")
+    cwd = normalize_path_for_local(session.path or "/")
 
     # Generate a session UUID for the JSONL filename
     session_uuid = str(uuid.uuid4())
