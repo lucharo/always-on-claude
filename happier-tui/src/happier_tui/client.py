@@ -49,6 +49,18 @@ def get_local_hostname() -> str:
     return platform.node().split(".")[0].lower()
 
 
+def normalize_hostname(host: str) -> str:
+    """Normalize a hostname for comparison — strip FQDN, lowercase."""
+    return host.split(".")[0].lower() if host else ""
+
+
+def is_local_host(host: str | None) -> bool:
+    """Check if a hostname refers to this machine."""
+    if not host:
+        return False
+    return normalize_hostname(host) == get_local_hostname()
+
+
 # ---------------------------------------------------------------------------
 # Relay API (primary data source)
 # ---------------------------------------------------------------------------
@@ -305,7 +317,6 @@ async def merge_local_into_relay(
     local_children: list[dict],
 ) -> None:
     """Enrich relay sessions with local daemon data (PID, alive status)."""
-    local_hostname = get_local_hostname()
     # Build mapping of happier session ID -> local child data
     local_by_id = {}
     for child in local_children:
@@ -314,7 +325,7 @@ async def merge_local_into_relay(
             local_by_id[sid] = child
 
     for session in relay_sessions:
-        if session.host and session.host.lower() != local_hostname:
+        if not is_local_host(session.host):
             continue
         child = local_by_id.get(session.relay_id)
         if child:

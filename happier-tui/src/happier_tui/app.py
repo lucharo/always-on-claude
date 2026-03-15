@@ -14,10 +14,11 @@ from textual.widgets import DataTable, Footer, Input, Static
 from happier_tui.client import (
     Session,
     can_resume_locally,
-    get_local_hostname,
+    is_local_host,
     is_daemon_running,
     list_local_sessions,
     merge_local_into_relay,
+    normalize_hostname,
     read_daemon_state,
     relative_time,
     relay_list_sessions,
@@ -116,8 +117,7 @@ class SessionDetail(Static):
         if not s:
             return "[dim]No session selected[/]"
 
-        local_hostname = get_local_hostname()
-        is_local = s.host and s.host.lower() == local_hostname
+        is_local = is_local_host(s.host)
 
         _, status_label = _session_status(s)
         source = _infer_source(s)
@@ -130,7 +130,7 @@ class SessionDetail(Static):
             "",
             f"[dim]ID[/]      [cyan]{s.relay_id}[/]",
             f"[dim]Status[/]  {status_label}",
-            f"[dim]Host[/]    {'[bold]' if is_local else '[cyan]'}{s.host or '?'}[/]",
+            f"[dim]Host[/]    {'[bold]' if is_local else '[cyan]'}{normalize_hostname(s.host or '?')}[/]",
             f"[dim]Agent[/]   {s.flavor}",
             f"[dim]Source[/]  {source}",
             f"[dim]Dir[/]     {path}",
@@ -363,14 +363,12 @@ class HappierTUI(App):
             empty_msg.remove_class("visible")
             table.clear()
 
-            local_hostname = get_local_hostname()
-
             for s in visible:
                 icon, _ = _session_status(s)
 
-                # Host: bold for local, dim for remote
-                host = s.host or "?"
-                is_local = host.lower() == local_hostname
+                # Host: normalize FQDN, bold for local, dim for remote
+                host = normalize_hostname(s.host or "?")
+                is_local = is_local_host(s.host)
                 host_display = f"[bold]{host}[/]" if is_local else f"[dim]{host}[/]"
 
                 # Title: bold if active/running, dim italic if inactive
@@ -461,10 +459,7 @@ class HappierTUI(App):
             self.notify("No session selected", severity="warning")
             return
 
-        local_hostname = get_local_hostname()
-        is_local = session.host and session.host.lower() == local_hostname
-
-        if is_local:
+        if is_local_host(session.host):
             cwd = session.path or os.path.expanduser("~")
             self.exit(result=("resume-yolo", session.relay_id, cwd, session.flavor))
         else:
@@ -483,10 +478,7 @@ class HappierTUI(App):
             self.notify(f"Cannot resume locally: {reason}", severity="error")
             return
 
-        local_hostname = get_local_hostname()
-        is_local = session.host and session.host.lower() == local_hostname
-
-        if is_local:
+        if is_local_host(session.host):
             cwd = session.path or os.path.expanduser("~")
             cwd = normalize_path_for_local(cwd)
             self.exit(result=("resume-yolo", session.relay_id, cwd, session.flavor))
