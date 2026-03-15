@@ -219,7 +219,7 @@ class HappierTUI(App):
         Binding("r", "refresh", "Refresh"),
         Binding("enter", "select_session", "Open", priority=True),
         Binding("R", "resume_local", "Resume local"),
-        Binding("a", "toggle_active", "Active/all"),
+        Binding("a", "cycle_filter", "Filter"),
         Binding("slash", "search", "Search"),
         Binding("i", "toggle_detail", "Detail"),
         Binding("s", "stop_selected", "Stop"),
@@ -230,9 +230,12 @@ class HappierTUI(App):
         Binding("ctrl+d", "quit", show=False),
     ]
 
+    # Filter modes: "recent" (default) → "active" → "all"
+    FILTER_MODES = ("recent", "active", "all")
+
     sessions: list[Session] = []
     _sessions_by_id: dict[str, Session] = {}
-    _show_active_only: bool = False
+    _filter_mode: str = "recent"  # default: last 24h + active/running
     _search_query: str = ""
 
     def compose(self) -> ComposeResult:
@@ -285,11 +288,22 @@ class HappierTUI(App):
         status_bar.total_count = len(sessions)
 
         # Apply filters
+        import time
         visible = sessions
         filter_parts = []
-        if self._show_active_only:
+        cutoff_24h = int((time.time() - 86400) * 1000)
+
+        if self._filter_mode == "recent":
+            visible = [
+                s for s in visible
+                if s.active or s.local_alive or s.updated_at > cutoff_24h
+            ]
+            filter_parts.append("last 24h")
+        elif self._filter_mode == "active":
             visible = [s for s in visible if s.active or s.local_alive]
             filter_parts.append("active/running")
+        # "all" → no filter
+
         if self._search_query:
             q = self._search_query.lower()
             visible = [
@@ -298,7 +312,7 @@ class HappierTUI(App):
             ]
             filter_parts.append(f'"{self._search_query}"')
 
-        status_bar.filter_label = " + ".join(filter_parts)
+        status_bar.filter_label = " + ".join(filter_parts) if self._filter_mode != "all" or self._search_query else ""
         status_bar.visible_count = len(visible)
 
         host_counts: dict[str, int] = {}
@@ -320,12 +334,19 @@ class HappierTUI(App):
         if not visible:
             table.display = False
             empty_msg.add_class("visible")
-            if self._show_active_only:
+            if self._filter_mode == "active":
                 n_total = len(sessions)
                 empty_msg.update(
                     f"[dim]No active or running sessions right now[/]\n"
-                    f"[dim]{n_total} inactive sessions hidden[/]\n\n"
+                    f"[dim]{n_total} sessions hidden[/]\n\n"
                     f"[dim]Press [bold]a[/bold] to show all[/]"
+                )
+            elif self._filter_mode == "recent":
+                n_total = len(sessions)
+                empty_msg.update(
+                    f"[dim]No sessions in the last 24 hours[/]\n"
+                    f"[dim]{n_total} older sessions hidden[/]\n\n"
+                    f"[dim]Press [bold]a[/bold] to show more[/]"
                 )
             elif self._search_query:
                 empty_msg.update(
@@ -393,13 +414,13 @@ class HappierTUI(App):
         self.refresh_sessions()
         self.notify("Refreshing…")
 
-    def action_toggle_active(self) -> None:
-        """Toggle showing only active/running sessions."""
-        self._show_active_only = not self._show_active_only
-        if self._show_active_only:
-            self.notify("Showing active & running only")
-        else:
-            self.notify("Showing all sessions")
+    def action_cycle_filter(self) -> None:
+        """Cycle filter: recent → active → all → recent."""
+        modes = self.FILTER_MODES
+        idx = modes.index(self._filter_mode)
+        self._filter_mode = modes[(idx + 1) % len(modes)]
+        labels = {"recent": "Recent (24h)", "active": "Active/running only", "all": "All sessions"}
+        self.notify(labels[self._filter_mode])
         self.refresh_sessions()
 
     def action_search(self) -> None:
