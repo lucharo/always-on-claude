@@ -2,6 +2,8 @@
 
 A terminal dashboard for all your [Happier](https://github.com/gptlabs/happier) sessions across machines. The relay knows about every session on every device — the TUI is the single pane of glass.
 
+> **Important: cross-device resume requires file sync.** Local resume of remote sessions (R key) only works if the session's working directory exists on both machines. This project assumes [Mutagen](https://mutagen.io/) (or similar) is syncing project directories between your machines. Without that, the agent binary has no code to work with and resume will fail. The relay chat view (Enter key) works without file sync since it just proxies messages.
+
 ## Two modes of interaction
 
 ```

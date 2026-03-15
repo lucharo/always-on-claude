@@ -149,9 +149,11 @@ class SessionDetail(Static):
         if is_local:
             lines.append("[dim]Enter: resume  R: resume (yolo)[/]")
         elif ok:
-            lines.append("[dim]Enter: chat view  R: local resume[/]")
+            lines.append("[dim]Enter: chat view[/]")
+            lines.append("[dim]R: local resume (needs file sync)[/]")
         else:
-            lines.append(f"[dim]Enter: chat view[/]  [red]R: blocked ({reason})[/]")
+            lines.append(f"[dim]Enter: chat view[/]")
+            lines.append(f"[red]R: blocked ({reason})[/]")
 
         return "\n".join(lines)
 
