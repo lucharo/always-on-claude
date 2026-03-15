@@ -11,11 +11,13 @@ from textual.containers import Vertical
 from textual.reactive import reactive
 from textual.widgets import DataTable, Footer, Header, Static
 
-from happier_tui.daemon_client import (
+from happier_tui.client import (
     Session,
     is_daemon_running,
-    list_sessions,
+    list_local_sessions,
+    merge_local_into_relay,
     read_daemon_state,
+    relay_list_sessions,
     stop_session,
 )
 
