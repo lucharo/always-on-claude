@@ -81,9 +81,9 @@ class StatusBar(Static):
     filter_label: reactive[str] = reactive("")
 
     def render(self) -> str:
-        # Connection indicators
-        relay = "[green]●[/] relay" if self.relay_ok else "[red]●[/] relay"
-        daemon = "  [green]●[/] daemon" if self.daemon_running else ""
+        # Connection indicators — use symbols + text, not just color
+        relay = "[bold green]● relay ok[/]" if self.relay_ok else "[bold red]✗ relay down[/]"
+        daemon = "  [bold]● daemon ok[/]" if self.daemon_running else "  [dim]daemon off[/]"
 
         # Counts
         counts = f"{self.visible_count} sessions"
@@ -127,10 +127,11 @@ class SessionDetail(Static):
 
         lines = [
             f"[bold]{title}[/]",
-            f"[dim]{s.relay_id}[/]",
             "",
+            f"[dim]ID[/]      [cyan]{s.relay_id}[/]",
             f"[dim]Status[/]  {status_label}",
             f"[dim]Host[/]    {'[bold]' if is_local else '[cyan]'}{s.host or '?'}[/]",
+            f"[dim]Agent[/]   {s.flavor}",
             f"[dim]Source[/]  {source}",
             f"[dim]Dir[/]     {path}",
             f"[dim]Updated[/] {relative_time(s.updated_at)}",
