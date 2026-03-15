@@ -30,6 +30,31 @@ from happier_tui.client import (
 )
 
 
+def _find_local_uuid_for_relay(relay_id: str) -> str | None:
+    """Find the local Claude session UUID for a synced relay session."""
+    claude_projects = Path.home() / ".claude" / "projects"
+    if not claude_projects.exists():
+        return None
+    for project_dir in claude_projects.iterdir():
+        if not project_dir.is_dir():
+            continue
+        for jsonl in project_dir.glob("*.jsonl"):
+            try:
+                with open(jsonl) as f:
+                    first_line = f.readline()
+                    if not first_line:
+                        continue
+                    data = json.loads(first_line)
+                    if (
+                        data.get("type") == "sync_metadata"
+                        and data.get("relay_session_id") == relay_id
+                    ):
+                        return jsonl.stem
+            except (json.JSONDecodeError, OSError):
+                continue
+    return None
+
+
 def _find_synced_relay_ids() -> set[str]:
     """Scan local JSONL files for sync_metadata to find relay origin IDs.
 
@@ -169,7 +194,12 @@ class SessionDetail(Static):
             f"[dim]Created[/] {relative_time(s.created_at)}",
         ]
         if s.synced_locally:
-            lines.append(f"[dim]Synced[/]  [magenta]⇅ local copy exists[/]")
+            # Find the local Claude UUID
+            local_uuid = _find_local_uuid_for_relay(s.relay_id)
+            if local_uuid:
+                lines.append(f"[dim]Local[/]   [magenta]⇅ {local_uuid}[/]")
+            else:
+                lines.append(f"[dim]Synced[/]  [magenta]⇅ local copy exists[/]")
         if s.pending_count:
             lines.append(f"[dim]Pending[/] [yellow bold]{s.pending_count} messages[/]")
         if is_local and s.local_pid:
@@ -284,7 +314,7 @@ class HappierTUI(App):
         table = self.query_one(DataTable)
         table.cursor_type = "row"
         table.zebra_stripes = True
-        table.add_columns("", "Host", "Agent", "Title", "Directory", "Updated")
+        table.add_columns("", "Host", "Agent", "ID", "Title", "Directory", "Updated")
         self.refresh_sessions()
         self.set_interval(5.0, self.refresh_sessions)
 
@@ -420,6 +450,7 @@ class HappierTUI(App):
                     title_display = f"[dim italic]{title}[/]{synced_badge}"
 
                 agent = f"[dim]{s.flavor}[/]"
+                short_id = f"[dim]{s.relay_id[:12]}…[/]"
                 path = _shorten_path(s.path or "?")
                 updated = relative_time(s.updated_at)
 
@@ -427,11 +458,15 @@ class HappierTUI(App):
                     icon,
                     host_display,
                     agent,
+                    short_id,
                     title_display,
                     path,
                     updated,
                     key=s.relay_id,
                 )
+
+            # Update detail panel for current selection
+            self._update_detail_panel()
 
     def _get_selected_session(self) -> Session | None:
         table = self.query_one(DataTable)
@@ -443,10 +478,19 @@ class HappierTUI(App):
         except Exception:
             return None
 
-    def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+    def _update_detail_panel(self) -> None:
+        """Update the detail panel with the currently selected session."""
         detail = self.query_one(SessionDetail)
-        detail.session = None
-        detail.session = self._get_selected_session()
+        session = self._get_selected_session()
+        # Force reactive update by setting to a different value first
+        if detail.session is not session:
+            detail.session = session
+        else:
+            detail.session = None
+            detail.session = session
+
+    def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        self._update_detail_panel()
 
     def action_refresh(self) -> None:
         self.refresh_sessions()
