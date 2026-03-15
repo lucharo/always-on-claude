@@ -35,8 +35,8 @@ def _shorten_path(path: str) -> str:
 class ChatStatus(Static):
     """Compact status bar for the chat screen."""
 
-    def __init__(self, session: Session) -> None:
-        super().__init__()
+    def __init__(self, session: Session, **kwargs) -> None:
+        super().__init__(**kwargs)
         self._session = session
 
     def render(self) -> str:
@@ -77,8 +77,8 @@ class ChatScreen(Screen):
     }
     """
 
-    def __init__(self, session: Session) -> None:
-        super().__init__()
+    def __init__(self, session: Session, **kwargs) -> None:
+        super().__init__(**kwargs)
         self._session = session
         self._streaming = False
         self._stream_id: str | None = None
