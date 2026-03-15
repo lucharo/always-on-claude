@@ -37,6 +37,7 @@ class Session:
     pending_count: int = 0
     # Sync state
     synced_locally: bool = False  # has been synced via conversation sync
+    local_session_uuid: str | None = None  # local Claude session UUID if synced
     # Local daemon enrichment (only for sessions on this host)
     local_pid: int | None = None
     local_alive: bool = False

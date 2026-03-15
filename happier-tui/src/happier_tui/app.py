@@ -30,37 +30,12 @@ from happier_tui.client import (
 )
 
 
-def _find_local_uuid_for_relay(relay_id: str) -> str | None:
-    """Find the local Claude session UUID for a synced relay session."""
-    claude_projects = Path.home() / ".claude" / "projects"
-    if not claude_projects.exists():
-        return None
-    for project_dir in claude_projects.iterdir():
-        if not project_dir.is_dir():
-            continue
-        for jsonl in project_dir.glob("*.jsonl"):
-            try:
-                with open(jsonl) as f:
-                    first_line = f.readline()
-                    if not first_line:
-                        continue
-                    data = json.loads(first_line)
-                    if (
-                        data.get("type") == "sync_metadata"
-                        and data.get("relay_session_id") == relay_id
-                    ):
-                        return jsonl.stem
-            except (json.JSONDecodeError, OSError):
-                continue
-    return None
+def _find_synced_sessions() -> dict[str, str]:
+    """Scan local JSONL files for sync_metadata.
 
-
-def _find_synced_relay_ids() -> set[str]:
-    """Scan local JSONL files for sync_metadata to find relay origin IDs.
-
-    Returns set of relay session IDs that have been synced locally.
+    Returns dict mapping relay_session_id → local_session_uuid.
     """
-    synced = set()
+    synced: dict[str, str] = {}
     claude_projects = Path.home() / ".claude" / "projects"
     if not claude_projects.exists():
         return synced
@@ -77,7 +52,7 @@ def _find_synced_relay_ids() -> set[str]:
                     if data.get("type") == "sync_metadata":
                         relay_id = data.get("relay_session_id")
                         if relay_id:
-                            synced.add(relay_id)
+                            synced[relay_id] = jsonl.stem
             except (json.JSONDecodeError, OSError):
                 continue
     return synced
@@ -184,7 +159,7 @@ class SessionDetail(Static):
         lines = [
             f"[bold]{title}[/]",
             "",
-            f"[dim]ID[/]      [cyan]{s.relay_id}[/]",
+            f"[dim]Happier[/] [cyan]{s.relay_id}[/]",
             f"[dim]Status[/]  {status_label}",
             f"[dim]Host[/]    {'[bold]' if is_local else '[cyan]'}{normalize_hostname(s.host or '?')}[/]",
             f"[dim]Agent[/]   {s.flavor}",
@@ -193,13 +168,10 @@ class SessionDetail(Static):
             f"[dim]Updated[/] {relative_time(s.updated_at)}",
             f"[dim]Created[/] {relative_time(s.created_at)}",
         ]
-        if s.synced_locally:
-            # Find the local Claude UUID
-            local_uuid = _find_local_uuid_for_relay(s.relay_id)
-            if local_uuid:
-                lines.append(f"[dim]Local[/]   [magenta]⇅ {local_uuid}[/]")
-            else:
-                lines.append(f"[dim]Synced[/]  [magenta]⇅ local copy exists[/]")
+        if s.synced_locally and s.local_session_uuid:
+            lines.append(f"[dim]Local[/]   [magenta]⇅ {s.local_session_uuid}[/]")
+        elif s.synced_locally:
+            lines.append(f"[dim]Synced[/]  [magenta]⇅ local copy exists[/]")
         if s.pending_count:
             lines.append(f"[dim]Pending[/] [yellow bold]{s.pending_count} messages[/]")
         if is_local and s.local_pid:
@@ -314,7 +286,7 @@ class HappierTUI(App):
         table = self.query_one(DataTable)
         table.cursor_type = "row"
         table.zebra_stripes = True
-        table.add_columns("", "Host", "Agent", "ID", "Title", "Directory", "Updated")
+        table.add_columns("", "Host", "Agent", "Happier ID", "Title", "Directory", "Updated")
         self.refresh_sessions()
         self.set_interval(5.0, self.refresh_sessions)
 
@@ -333,11 +305,16 @@ class HappierTUI(App):
             local_children = await list_local_sessions()
             await merge_local_into_relay(sessions, local_children)
 
-        # Mark sessions that have been synced locally
-        synced_ids = _find_synced_relay_ids()
+        # Mark sessions that have been synced locally and hide forks
+        synced_map = _find_synced_sessions()
+        # Build set of local UUIDs that are forks of relay sessions
+        fork_uuids = set(synced_map.values())
+        # Remove fork sessions from the list (they show as the relay original)
+        sessions = [s for s in sessions if s.relay_id not in fork_uuids]
         for s in sessions:
-            if s.relay_id in synced_ids:
+            if s.relay_id in synced_map:
                 s.synced_locally = True
+                s.local_session_uuid = synced_map[s.relay_id]
 
         # Sort: connected first, then running, then by updated_at descending
         sessions.sort(key=lambda s: (
