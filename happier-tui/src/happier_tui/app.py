@@ -223,6 +223,8 @@ class HappierTUI(App):
         Binding("s", "stop_selected", "Stop"),
         Binding("n", "new_session", "New"),
         Binding("q", "quit", "Quit"),
+        Binding("ctrl+c", "quit", show=False),
+        Binding("ctrl+d", "quit", show=False),
     ]
 
     sessions: list[Session] = []
