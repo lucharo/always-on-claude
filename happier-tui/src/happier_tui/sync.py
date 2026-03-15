@@ -13,6 +13,7 @@ Flow:
 from __future__ import annotations
 
 import json
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -243,6 +244,15 @@ async def sync_session_locally(
     # Write JSONL file
     jsonl_path = jsonl_path_for_session(session, session_uuid)
     with open(jsonl_path, "w") as f:
+        # First line: sync metadata (so the TUI can link back to relay origin)
+        meta = {
+            "type": "sync_metadata",
+            "relay_session_id": session.relay_id,
+            "relay_host": session.host,
+            "synced_at": _epoch_ms_to_iso(int(time.time() * 1000)),
+            "original_title": session.title,
+        }
+        f.write(json.dumps(meta, separators=(",", ":")) + "\n")
         for line in lines:
             f.write(json.dumps(line, separators=(",", ":")) + "\n")
 

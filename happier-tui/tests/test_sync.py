@@ -333,8 +333,13 @@ async def test_sync_session_locally_happy_path(tmp_path):
 
     # Verify each line is valid JSON
     lines = out_file.read_text().strip().splitlines()
-    assert len(lines) == 2
-    for line in lines:
+    assert len(lines) == 3  # metadata + user + assistant
+    # First line is sync metadata
+    meta = json.loads(lines[0])
+    assert meta["type"] == "sync_metadata"
+    assert meta["relay_session_id"] == "test-sync"
+    # Remaining lines are conversation
+    for line in lines[1:]:
         parsed = json.loads(line)
         assert "type" in parsed
         assert "uuid" in parsed
