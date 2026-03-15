@@ -13,34 +13,42 @@ from textual.widgets import DataTable, Footer, Header, Static
 
 from happier_tui.client import (
     Session,
+    can_resume_locally,
+    get_local_hostname,
     is_daemon_running,
     list_local_sessions,
     merge_local_into_relay,
     read_daemon_state,
+    relative_time,
     relay_list_sessions,
     stop_session,
+    _normalize_path_for_local,
 )
 
 
-class DaemonStatus(Static):
-    """Shows daemon status."""
+class StatusBar(Static):
+    """Shows relay + daemon status."""
 
     daemon_running: reactive[bool] = reactive(False)
-    daemon_pid: reactive[int] = reactive(0)
-    daemon_port: reactive[int] = reactive(0)
-    daemon_version: reactive[str] = reactive("?")
+    relay_ok: reactive[bool] = reactive(False)
     session_count: reactive[int] = reactive(0)
+    host_counts: reactive[dict] = reactive({})
 
     def render(self) -> str:
-        if not self.daemon_running:
-            return "[bold red]● Daemon offline[/]"
-        return (
-            f"[bold green]● Daemon running[/]  "
-            f"PID [cyan]{self.daemon_pid}[/]  "
-            f"Port [cyan]{self.daemon_port}[/]  "
-            f"v{self.daemon_version}  "
-            f"Sessions: [bold]{self.session_count}[/]"
-        )
+        parts = []
+        if self.relay_ok:
+            parts.append("[bold green]● Relay connected[/]")
+        else:
+            parts.append("[bold red]● Relay offline[/]")
+        if self.daemon_running:
+            parts.append("[green]● Daemon[/]")
+        else:
+            parts.append("[dim]● No daemon[/]")
+        parts.append(f"Sessions: [bold]{self.session_count}[/]")
+        if self.host_counts:
+            host_parts = [f"{h}: {c}" for h, c in sorted(self.host_counts.items())]
+            parts.append(f"[dim]({', '.join(host_parts)})[/]")
+        return "  ".join(parts)
 
 
 class SessionDetail(Static):
@@ -53,24 +61,38 @@ class SessionDetail(Static):
         if not s:
             return "[dim]Select a session to see details[/]"
 
-        status = "[bold green]running[/]" if s.alive else "[bold red]dead[/]"
-        resume_id = s.claude_session_id or s.happier_session_id
+        local_hostname = get_local_hostname()
+        is_local = s.host and s.host.lower() == local_hostname
+
+        if s.active:
+            status = "[bold green]active[/]"
+        else:
+            status = "[dim]inactive[/]"
+        if is_local and s.local_pid:
+            if s.local_alive:
+                status += f" [green](PID {s.local_pid})[/]"
+            else:
+                status += f" [red](PID {s.local_pid} dead)[/]"
 
         lines = [
-            f"[bold]Session Details[/]",
+            "[bold]Session Details[/]",
             "",
-            f"  Happier ID:  [cyan]{s.happier_session_id}[/]",
-            f"  Claude UUID: [cyan]{s.claude_session_id or 'unknown'}[/]",
-            f"  PID:         [cyan]{s.pid}[/]",
-            f"  Agent:       [bold]{s.flavor}[/]",
-            f"  Started by:  {s.started_by}",
-            f"  Directory:   {s.cwd or 'unknown'}",
+            f"  Relay ID:    [cyan]{s.relay_id}[/]",
+            f"  Host:        [bold]{'[green]' if is_local else '[cyan]'}{s.host or '?'}[/]",
+            f"  Directory:   {s.path or 'unknown'}",
             f"  Status:      {status}",
+            f"  Updated:     {relative_time(s.updated_at)}",
+            f"  Created:     {relative_time(s.created_at)}",
         ]
         if s.title:
             lines.append(f"  Title:       [bold]{s.title}[/]")
+        if s.pending_count:
+            lines.append(f"  Pending:     [yellow]{s.pending_count}[/]")
         lines.append("")
-        lines.append(f"  [dim]Resume cmd:[/] happier --resume {resume_id} --yolo")
+        if is_local:
+            lines.append(f"  [dim]Resume:[/] happier --resume {s.relay_id} --yolo")
+        else:
+            lines.append(f"  [dim]Enter to open chat  |  R to try local resume[/]")
 
         return "\n".join(lines)
 
@@ -107,8 +129,8 @@ class HappierTUI(App):
 
     BINDINGS = [
         Binding("r", "refresh", "Refresh"),
-        Binding("enter", "resume_yolo", "Resume (yolo)"),
-        Binding("R", "resume_default", "Resume (default)"),
+        Binding("enter", "select_session", "Open/Resume"),
+        Binding("R", "resume_local", "Local Resume"),
         Binding("s", "stop_selected", "Stop"),
         Binding("n", "new_session", "New session"),
         Binding("l", "view_logs", "Logs"),
@@ -120,7 +142,7 @@ class HappierTUI(App):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield DaemonStatus(id="status-bar")
+        yield StatusBar(id="status-bar")
         with Vertical():
             yield DataTable(id="session-table")
             yield SessionDetail(id="detail-panel")
@@ -129,61 +151,79 @@ class HappierTUI(App):
     def on_mount(self) -> None:
         table = self.query_one(DataTable)
         table.cursor_type = "row"
-        table.add_columns("", "ID", "PID", "Agent", "Source", "Directory", "Title")
+        table.add_columns("", "Host", "Updated", "Directory", "Title")
         self.refresh_sessions()
         self.set_interval(5.0, self.refresh_sessions)
 
     @work(exclusive=True)
     async def refresh_sessions(self) -> None:
+        status_bar = self.query_one(StatusBar)
+
+        # Primary: relay sessions
+        sessions = await relay_list_sessions()
+        status_bar.relay_ok = len(sessions) > 0
+
+        # Secondary: merge local daemon data
         state = read_daemon_state()
-        status = self.query_one(DaemonStatus)
+        status_bar.daemon_running = state is not None and is_daemon_running()
+        if status_bar.daemon_running:
+            local_children = await list_local_sessions()
+            await merge_local_into_relay(sessions, local_children)
 
-        if not state or not is_daemon_running():
-            status.daemon_running = False
-            status.session_count = 0
-            return
+        # Sort: active first, then by updated_at descending
+        sessions.sort(key=lambda s: (not s.active, -s.updated_at))
 
-        status.daemon_running = True
-        status.daemon_pid = state.pid
-        status.daemon_port = state.http_port
-        status.daemon_version = state.cli_version
+        status_bar.session_count = len(sessions)
+        host_counts: dict[str, int] = {}
+        for s in sessions:
+            h = s.host or "?"
+            host_counts[h] = host_counts.get(h, 0) + 1
+        status_bar.host_counts = host_counts
 
-        sessions = await list_sessions()
-        status.session_count = len(sessions)
         self.sessions = sessions
-        self._sessions_by_id = {s.happier_session_id: s for s in sessions}
+        self._sessions_by_id = {s.relay_id: s for s in sessions}
 
         table = self.query_one(DataTable)
         table.clear()
 
+        local_hostname = get_local_hostname()
         home = os.path.expanduser("~")
 
         for s in sessions:
-            status_icon = "[green]●[/]" if s.alive else "[red]●[/]"
-            short_id = s.happier_session_id[:16] + "…"
+            # Status icon
+            if s.active:
+                status_icon = "[bold green]●[/]"
+            elif s.local_alive:
+                status_icon = "[green]○[/]"
+            else:
+                status_icon = "[dim]○[/]"
 
-            cwd = s.cwd or "?"
-            if cwd.startswith(home):
-                cwd = "~" + cwd[len(home):]
+            # Host with color
+            host = s.host or "?"
+            is_local = host.lower() == local_hostname
+            if is_local:
+                host_display = f"[green]{host}[/]"
+            else:
+                host_display = f"[cyan]{host}[/]"
 
-            title = (s.title or "")[:40]
+            # Path: shorten home dir
+            path = s.path or "?"
+            if path.startswith(home):
+                path = "~" + path[len(home):]
+            # Also shorten common prefixes
+            path = path.replace("/Users/luischavesrodriguez/", "~/")
+            path = path.replace("/home/luis/", "~/")
 
-            # Clean up "started_by" display
-            source = s.started_by
-            if "terminal" in source:
-                source = "terminal"
-            elif "daemon" in source:
-                source = "daemon"
+            title = (s.title or "")[:50]
+            updated = relative_time(s.updated_at)
 
             table.add_row(
                 status_icon,
-                short_id,
-                str(s.pid),
-                s.flavor,
-                source,
-                cwd,
+                host_display,
+                updated,
+                path,
                 title,
-                key=s.happier_session_id,
+                key=s.relay_id,
             )
 
     def _get_selected_session(self) -> Session | None:
@@ -205,23 +245,41 @@ class HappierTUI(App):
         self.refresh_sessions()
         self.notify("Refreshing…")
 
-    def action_resume_yolo(self) -> None:
+    def action_select_session(self) -> None:
+        """Enter on a session: local resume if local, chat screen if remote."""
         session = self._get_selected_session()
         if not session:
             self.notify("No session selected", severity="warning")
             return
-        resume_id = session.claude_session_id or session.happier_session_id
-        cwd = session.cwd or os.path.expanduser("~")
-        self.exit(result=("resume-yolo", resume_id, cwd, session.flavor))
 
-    def action_resume_default(self) -> None:
+        local_hostname = get_local_hostname()
+        is_local = session.host and session.host.lower() == local_hostname
+
+        if is_local:
+            # Local session: resume directly
+            cwd = session.path or os.path.expanduser("~")
+            self.exit(result=("resume-yolo", session.relay_id, cwd, session.flavor))
+        else:
+            # Remote session: open chat screen
+            from happier_tui.chat_screen import ChatScreen
+            self.push_screen(ChatScreen(session))
+
+    def action_resume_local(self) -> None:
+        """R key: try to resume any session locally."""
         session = self._get_selected_session()
         if not session:
             self.notify("No session selected", severity="warning")
             return
-        resume_id = session.claude_session_id or session.happier_session_id
-        cwd = session.cwd or os.path.expanduser("~")
-        self.exit(result=("resume-default", resume_id, cwd, session.flavor))
+
+        ok, reason = can_resume_locally(session)
+        if not ok:
+            self.notify(f"Cannot resume locally: {reason}", severity="error")
+            return
+
+        cwd = session.path or os.path.expanduser("~")
+        # Normalize path for this machine
+        cwd = _normalize_path_for_local(cwd)
+        self.exit(result=("resume-yolo", session.relay_id, cwd, session.flavor))
 
     @work(exclusive=True)
     async def action_stop_selected(self) -> None:
@@ -229,9 +287,9 @@ class HappierTUI(App):
         if not session:
             self.notify("No session selected", severity="warning")
             return
-        success = await stop_session(session.happier_session_id)
+        success = await stop_session(session.relay_id)
         if success:
-            self.notify(f"Stopped {session.happier_session_id[:16]}…")
+            self.notify(f"Stopped {session.relay_id[:16]}…")
         else:
             self.notify("Failed to stop session", severity="error")
         self.refresh_sessions()
@@ -244,9 +302,12 @@ class HappierTUI(App):
         if not session:
             self.notify("No session selected", severity="warning")
             return
+        if not session.local_pid:
+            self.notify("No local PID — logs only available for local sessions", severity="warning")
+            return
         from pathlib import Path
         logs_dir = Path.home() / ".happier" / "logs"
-        matches = sorted(logs_dir.glob(f"*-pid-{session.pid}.log"), reverse=True)
+        matches = sorted(logs_dir.glob(f"*-pid-{session.local_pid}.log"), reverse=True)
         if matches:
             self.exit(result=("logs", str(matches[0])))
         else:
@@ -268,11 +329,9 @@ def main() -> None:
         if os.path.isdir(cwd):
             os.chdir(cwd)
 
-        # Build the right command based on agent/backend
-        # "happier" defaults to claude; other backends use "happier <backend>"
         cmd = ["happier"]
         if flavor and flavor != "claude":
-            cmd.append(flavor)  # e.g. "happier codex", "happier gemini"
+            cmd.append(flavor)
         cmd.extend(["--resume", resume_id])
         if action == "resume-yolo":
             cmd.append("--yolo")
