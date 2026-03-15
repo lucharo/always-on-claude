@@ -224,6 +224,7 @@ class HappierTUI(App):
         Binding("i", "toggle_detail", "Detail"),
         Binding("s", "stop_selected", "Stop"),
         Binding("n", "new_session", "New"),
+        Binding("t", "toggle_theme", "Theme"),
         Binding("q", "quit", "Quit"),
         Binding("ctrl+c", "quit", show=False),
         Binding("ctrl+d", "quit", show=False),
@@ -506,6 +507,10 @@ class HappierTUI(App):
 
     def action_new_session(self) -> None:
         self.exit(result=("new", os.getcwd()))
+
+    def action_toggle_theme(self) -> None:
+        """Toggle between dark and light mode."""
+        self.theme = "textual-light" if self.theme == "textual-dark" else "textual-dark"
 
     def action_quit(self) -> None:
         self.exit()

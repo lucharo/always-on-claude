@@ -42,36 +42,76 @@ A terminal dashboard for all your [Happier](https://github.com/gptlabs/happier) 
 
 ### Mode 3: Local resume of a remote session (R key)
 
-This is the ambitious one. For it to work:
+Syncs the conversation from the relay and resumes it locally:
+
+1. Pull full history from relay via `happier session history <id> --format raw --json`
+2. Transform relay messages into Claude Code's JSONL format (user messages, assistant text, tool_use blocks with placeholder results)
+3. Write to `~/.claude/projects/<encoded-path>/<session-uuid>.jsonl`
+4. `cd` into the project directory and run `claude --resume <session-uuid>`
+
+For this to work:
 
 1. **Agent binary** must exist locally (`claude`, `codex`, etc.)
 2. **Working directory** must exist locally (Mutagen handles this for `~/Projects/`)
-3. **Conversation JSONL** needs to be reconstructable from relay history → written to the right path (`~/.claude/projects/<encoded-path>/<session-id>.jsonl` for Claude, equivalent for codex/opencode)
 
-If any of these fail, the TUI tells you exactly why ("Directory not found: /home/luis", "codex not installed locally").
+If either fails, the TUI shows why: "Directory not found: /home/luis", "'codex' not installed locally".
+
+## How conversation sync works
+
+Claude Code stores conversations as JSONL files in `~/.claude/projects/`. Each line is a JSON object — `user` messages (text + tool results) and `assistant` messages (text + tool_use blocks), chained by `parentUuid` fields.
+
+The relay stores conversation history in its own format (raw events over socket.io). The sync module (`sync.py`) bridges the two:
+
+```
+Relay (happier session history --format raw --json)
+  │
+  │  Each relay message has: role, createdAt, raw.content.data
+  │
+  ▼
+relay_to_jsonl_lines()
+  │
+  │  Transforms to Claude Code format:
+  │  - user text → {type: "user", message: {role: "user", content: [{type: "text", ...}]}}
+  │  - assistant text → {type: "assistant", message: {role: "assistant", content: [{type: "text", ...}]}}
+  │  - tool_use → assistant line + placeholder tool_result line
+  │  - thinking blocks → skipped (signatures won't validate)
+  │  - system/progress → skipped (not needed for resume)
+  │  - UUID chain: each line gets a uuid, parentUuid points to previous
+  │
+  ▼
+~/.claude/projects/<encoded-path>/<session-uuid>.jsonl
+  │
+  │  claude --resume <session-uuid>  (from the correct cwd)
+  │
+  ▼
+Claude Code picks up the conversation and continues
+```
+
+**Limitations:**
+- Tool results are placeholders ("synced from relay — original output not available") since the relay doesn't store them in the compact/raw format
+- The synced session gets a new UUID — it's a fork, not the same session
+- Only works when the project directory is available locally (via Mutagen or similar file sync)
 
 ## Cross-device session continuity
-
-What works today and what doesn't:
 
 | From → To | How | Works? |
 |-----------|-----|--------|
 | **MacBook → Phone** | Phone app sends messages through relay stream API — no local files needed | Yes |
 | **Arch → MacBook** | TUI ChatScreen reads history + sends messages through relay | Yes |
-| **MacBook → Arch (local resume)** | Only if `.jsonl` is synced via Mutagen AND path exists locally | Partial (~/Projects/ only) |
-| **Start on Mac, go offline, pick up on Arch** | Relay has the history but no mechanism to reconstruct `.jsonl` on arch | **Not yet** |
-
-The missing piece is **conversation sync**: pulling history from the relay, reconstructing it as a `.jsonl` in the format the agent expects (`~/.claude/projects/<encoded-path>/<session-id>.jsonl` for Claude Code), and placing it so `happier --resume` can find it. This would enable true device-agnostic session continuity.
+| **MacBook → Arch (local resume)** | Sync JSONL from relay + Mutagen provides the code directory | Yes |
+| **Arch → MacBook (local resume)** | Same — sync JSONL + Mutagen provides `~/Projects/` | Yes |
+| **Phone → any machine** | TUI R key syncs + resumes, or Enter for chat view | Yes |
 
 ## Keybindings
 
 | Key     | Action                              |
 |---------|-------------------------------------|
 | Enter   | Resume local / open remote chat     |
-| R       | Local resume (blocked if not possible) |
+| R       | Local resume (syncs from relay first) |
 | a       | Toggle active/running filter        |
 | /       | Search by title or path             |
 | i       | Toggle detail sidebar               |
+| t       | Toggle dark/light theme             |
 | r       | Refresh session list                |
 | s       | Stop selected session               |
 | n       | New session                         |
