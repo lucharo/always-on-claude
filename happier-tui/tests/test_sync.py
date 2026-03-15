@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
+import pytest
+
+from happier_tui.client import Session
 from happier_tui.sync import (
     _encode_project_dir,
     _epoch_ms_to_iso,
+    jsonl_path_for_session,
     relay_to_jsonl_lines,
+    sync_session_locally,
 )
 
 
@@ -227,3 +234,138 @@ def test_jsonl_is_valid_json():
         serialized = json.dumps(line)
         parsed = json.loads(serialized)
         assert parsed["type"] == line["type"]
+
+
+def test_relay_to_jsonl_stop_reason_with_trailing_thinking():
+    """stop_reason should land on last emittable block, not trailing thinking."""
+    raw = [
+        {
+            "id": "1",
+            "createdAt": 1000,
+            "role": "agent",
+            "raw": {
+                "content": {
+                    "data": {
+                        "type": "assistant",
+                        "message": {
+                            "model": "claude-opus-4-6",
+                            "id": "msg_1",
+                            "content": [
+                                {"type": "text", "text": "answer"},
+                                {"type": "thinking", "thinking": "hmm", "signature": "s"},
+                            ],
+                            "stop_reason": "end_turn",
+                            "usage": {},
+                        },
+                    }
+                }
+            },
+        }
+    ]
+    lines = relay_to_jsonl_lines(raw, session_id="s1", cwd="/tmp")
+    assert len(lines) == 1
+    assert lines[0]["message"]["stop_reason"] == "end_turn"
+
+
+# ---------------------------------------------------------------------------
+# jsonl_path_for_session
+# ---------------------------------------------------------------------------
+
+
+def test_jsonl_path_for_session():
+    s = Session(relay_id="abc123", path="/home/luis/Projects/myapp")
+    path = jsonl_path_for_session(s, "test-uuid-123")
+    assert path.name == "test-uuid-123.jsonl"
+    assert "projects" in str(path)
+
+
+def test_jsonl_path_uses_relay_id_as_fallback():
+    s = Session(relay_id="relay-id-xyz", path="/tmp")
+    path = jsonl_path_for_session(s)
+    assert path.name == "relay-id-xyz.jsonl"
+
+
+# ---------------------------------------------------------------------------
+# sync_session_locally (integration, mocked relay)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_sync_session_locally_happy_path(tmp_path):
+    """Sync writes a valid JSONL file."""
+    fake_raw = [
+        {"id": "1", "createdAt": 1000, "role": "user", "text": "hello"},
+        {
+            "id": "2",
+            "createdAt": 2000,
+            "role": "agent",
+            "raw": {
+                "content": {
+                    "data": {
+                        "type": "assistant",
+                        "message": {
+                            "model": "claude-opus-4-6",
+                            "id": "msg_1",
+                            "content": [{"type": "text", "text": "hi back"}],
+                            "stop_reason": "end_turn",
+                            "usage": {},
+                        },
+                    }
+                }
+            },
+        },
+    ]
+
+    session = Session(relay_id="test-sync", path=str(tmp_path))
+
+    with (
+        patch("happier_tui.sync.get_session_history", new_callable=AsyncMock, return_value=fake_raw),
+        patch("happier_tui.sync.jsonl_path_for_session") as mock_path,
+    ):
+        out_file = tmp_path / "synced.jsonl"
+        mock_path.return_value = out_file
+
+        path, count = await sync_session_locally(session, limit=50)
+
+    assert path == out_file
+    assert count == 2  # user + assistant
+    assert out_file.exists()
+
+    # Verify each line is valid JSON
+    lines = out_file.read_text().strip().splitlines()
+    assert len(lines) == 2
+    for line in lines:
+        parsed = json.loads(line)
+        assert "type" in parsed
+        assert "uuid" in parsed
+
+
+@pytest.mark.asyncio
+async def test_sync_session_locally_empty_history():
+    """Sync raises on empty relay response."""
+    session = Session(relay_id="empty", path="/tmp")
+
+    with patch("happier_tui.sync.get_session_history", new_callable=AsyncMock, return_value=[]):
+        with pytest.raises(RuntimeError, match="No history"):
+            await sync_session_locally(session)
+
+
+@pytest.mark.asyncio
+async def test_sync_session_locally_no_usable_messages():
+    """Sync raises when history has only system messages."""
+    fake_raw = [
+        {
+            "id": "1",
+            "createdAt": 1000,
+            "role": "agent",
+            "raw": {"content": {"data": {"type": "system", "subtype": "stop_hook"}}},
+        },
+    ]
+    session = Session(relay_id="sys-only", path="/tmp")
+
+    with (
+        patch("happier_tui.sync.get_session_history", new_callable=AsyncMock, return_value=fake_raw),
+        patch("happier_tui.sync.jsonl_path_for_session", return_value=Path("/tmp/test.jsonl")),
+    ):
+        with pytest.raises(RuntimeError, match="No user/assistant"):
+            await sync_session_locally(session)
