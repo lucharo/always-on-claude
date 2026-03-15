@@ -9,7 +9,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
 from textual.reactive import reactive
-from textual.widgets import DataTable, Footer, Header, Static
+from textual.widgets import DataTable, Footer, Header, Input, Static
 
 from happier_tui.client import (
     Session,
@@ -125,12 +125,22 @@ class HappierTUI(App):
     DataTable {
         height: 1fr;
     }
+    #search-bar {
+        height: 3;
+        padding: 0 1;
+        display: none;
+    }
+    #search-bar.visible {
+        display: block;
+    }
     """
 
     BINDINGS = [
         Binding("r", "refresh", "Refresh"),
         Binding("enter", "select_session", "Open/Resume"),
         Binding("R", "resume_local", "Local Resume"),
+        Binding("a", "toggle_active", "Active only"),
+        Binding("slash", "search", "Search"),
         Binding("s", "stop_selected", "Stop"),
         Binding("n", "new_session", "New session"),
         Binding("l", "view_logs", "Logs"),
@@ -139,10 +149,13 @@ class HappierTUI(App):
 
     sessions: list[Session] = []
     _sessions_by_id: dict[str, Session] = {}
+    _show_active_only: bool = False
+    _search_query: str = ""
 
     def compose(self) -> ComposeResult:
         yield Header()
         yield StatusBar(id="status-bar")
+        yield Input(placeholder="Search by title…", id="search-bar")
         with Vertical():
             yield DataTable(id="session-table")
             yield SessionDetail(id="detail-panel")
@@ -173,15 +186,23 @@ class HappierTUI(App):
         # Sort: active first, then by updated_at descending
         sessions.sort(key=lambda s: (not s.active, -s.updated_at))
 
-        status_bar.session_count = len(sessions)
+        self.sessions = sessions
+        self._sessions_by_id = {s.relay_id: s for s in sessions}
+
+        # Apply filters
+        visible = sessions
+        if self._show_active_only:
+            visible = [s for s in visible if s.active]
+        if self._search_query:
+            q = self._search_query.lower()
+            visible = [s for s in visible if q in (s.title or "").lower() or q in (s.path or "").lower()]
+
+        status_bar.session_count = len(visible)
         host_counts: dict[str, int] = {}
-        for s in sessions:
+        for s in visible:
             h = s.host or "?"
             host_counts[h] = host_counts.get(h, 0) + 1
         status_bar.host_counts = host_counts
-
-        self.sessions = sessions
-        self._sessions_by_id = {s.relay_id: s for s in sessions}
 
         table = self.query_one(DataTable)
         table.clear()
@@ -189,7 +210,7 @@ class HappierTUI(App):
         local_hostname = get_local_hostname()
         home = os.path.expanduser("~")
 
-        for s in sessions:
+        for s in visible:
             # Status icon
             if s.active:
                 status_icon = "[bold green]●[/]"
@@ -244,6 +265,38 @@ class HappierTUI(App):
     def action_refresh(self) -> None:
         self.refresh_sessions()
         self.notify("Refreshing…")
+
+    def action_toggle_active(self) -> None:
+        """Toggle showing only active sessions."""
+        self._show_active_only = not self._show_active_only
+        label = "active only" if self._show_active_only else "all"
+        self.notify(f"Filter: {label}")
+        self.refresh_sessions()
+
+    def action_search(self) -> None:
+        """Toggle search bar."""
+        search = self.query_one("#search-bar", Input)
+        if search.has_class("visible"):
+            search.remove_class("visible")
+            self._search_query = ""
+            self.refresh_sessions()
+            self.query_one(DataTable).focus()
+        else:
+            search.add_class("visible")
+            search.clear()
+            search.focus()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Filter sessions as user types in search bar."""
+        if event.input.id == "search-bar":
+            self._search_query = event.value
+            self.refresh_sessions()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Close search bar on Enter."""
+        if event.input.id == "search-bar":
+            event.input.remove_class("visible")
+            self.query_one(DataTable).focus()
 
     def action_select_session(self) -> None:
         """Enter on a session: local resume if local, chat screen if remote."""
