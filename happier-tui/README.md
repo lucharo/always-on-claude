@@ -2,7 +2,22 @@
 
 A terminal dashboard for all your [Happier](https://github.com/gptlabs/happier) sessions across machines. The relay knows about every session on every device — the TUI is the single pane of glass.
 
-> **Important: cross-device resume requires file sync.** Local resume of remote sessions (R key) only works if the session's working directory exists on both machines. This project assumes [Mutagen](https://mutagen.io/) (or similar) is syncing project directories between your machines. Without that, the agent binary has no code to work with and resume will fail. The relay chat view (Enter key) works without file sync since it just proxies messages.
+## What works for everyone vs what's specific to our setup
+
+**Works for anyone with happier + relay:**
+- Session list across all machines (host, agent, title, status)
+- Filters (recent/active/all), search, detail sidebar
+- Remote chat view via relay stream API (Enter on remote session)
+- Local resume of local sessions (Enter on local session)
+
+**Requires our specific multi-machine setup:**
+- **Local resume of remote sessions** (R key) — needs all of:
+  - [Mutagen](https://mutagen.io/) (or similar) syncing `~/Projects/` between machines
+  - A path bridge so both machines see the same relative paths (we use a symlink `/home/luis` → `/Users/luischavesrodriguez` on Linux)
+  - The same agent binary (`claude`, `codex`, etc.) installed on both machines
+  - Conversation sync from relay → local JSONL (this is what `sync.py` does)
+
+Without Mutagen + the path setup, the R key will show "Directory not found" and block. The chat view (Enter) still works since it just proxies messages through the relay without needing local files.
 
 ## Two modes of interaction
 
@@ -46,7 +61,7 @@ Syncs the conversation from the relay and resumes it locally:
 
 1. Pull full history from relay via `happier session history <id> --format raw --json`
 2. Transform relay messages into Claude Code's JSONL format (user messages, assistant text, tool_use blocks with placeholder results)
-3. Write to `~/.claude/projects/<encoded-path>/<session-uuid>.jsonl`
+3. Write to `~/.claude/projects/<encoded-path>/<session-uuid>.jsonl` with a `sync_metadata` line linking back to the relay origin
 4. `cd` into the project directory and run `claude --resume <session-uuid>`
 
 For this to work:
@@ -81,15 +96,18 @@ relay_to_jsonl_lines()
   ▼
 ~/.claude/projects/<encoded-path>/<session-uuid>.jsonl
   │
+  │  First line: sync_metadata (relay_session_id, relay_host, synced_at)
   │  claude --resume <session-uuid>  (from the correct cwd)
   │
   ▼
 Claude Code picks up the conversation and continues
 ```
 
+**Path normalisation** maps any `/home/<user>/X` → `~/X` on Mac, and `/Users/<user>/X` → `~/X` on Linux. No per-user config needed — but the directories must actually exist (via Mutagen or similar).
+
 **Limitations:**
-- Tool results are placeholders ("synced from relay — original output not available") since the relay doesn't store them in the compact/raw format
-- The synced session gets a new UUID — it's a fork, not the same session
+- Tool results are placeholders ("synced from relay — original output not available") since the relay doesn't store full tool output
+- The synced session is a fork — new UUID, shown as a separate session. The `sync_metadata` line links it back to the relay origin for deduplication
 - Only works when the project directory is available locally (via Mutagen or similar file sync)
 
 ## Cross-device session continuity
@@ -98,9 +116,9 @@ Claude Code picks up the conversation and continues
 |-----------|-----|--------|
 | **MacBook → Phone** | Phone app sends messages through relay stream API — no local files needed | Yes |
 | **Arch → MacBook** | TUI ChatScreen reads history + sends messages through relay | Yes |
-| **MacBook → Arch (local resume)** | Sync JSONL from relay + Mutagen provides the code directory | Yes |
-| **Arch → MacBook (local resume)** | Same — sync JSONL + Mutagen provides `~/Projects/` | Yes |
-| **Phone → any machine** | TUI R key syncs + resumes, or Enter for chat view | Yes |
+| **MacBook → Arch (local resume)** | Sync JSONL from relay + Mutagen provides the code directory | Yes (needs Mutagen) |
+| **Arch → MacBook (local resume)** | Same — sync JSONL + Mutagen provides `~/Projects/` | Yes (needs Mutagen) |
+| **Phone → any machine** | TUI R key syncs + resumes, or Enter for chat view | Yes (R needs Mutagen) |
 
 ## Keybindings
 
@@ -108,7 +126,7 @@ Claude Code picks up the conversation and continues
 |---------|-------------------------------------|
 | Enter   | Resume local / open remote chat     |
 | R       | Local resume (syncs from relay first) |
-| a       | Toggle active/running filter        |
+| a       | Cycle filter: recent → active → all |
 | /       | Search by title or path             |
 | i       | Toggle detail sidebar               |
 | t       | Toggle dark/light theme             |

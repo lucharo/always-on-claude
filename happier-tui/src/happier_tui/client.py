@@ -35,6 +35,8 @@ class Session:
     updated_at: int = 0  # epoch ms
     archived_at: int | None = None
     pending_count: int = 0
+    # Sync state
+    synced_locally: bool = False  # has been synced via conversation sync
     # Local daemon enrichment (only for sessions on this host)
     local_pid: int | None = None
     local_alive: bool = False

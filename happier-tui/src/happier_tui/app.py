@@ -11,6 +11,9 @@ from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
 from textual.widgets import DataTable, Footer, Input, Static
 
+import json
+from pathlib import Path
+
 from happier_tui.client import (
     Session,
     can_resume_locally,
@@ -25,6 +28,34 @@ from happier_tui.client import (
     stop_session,
     normalize_path_for_local,
 )
+
+
+def _find_synced_relay_ids() -> set[str]:
+    """Scan local JSONL files for sync_metadata to find relay origin IDs.
+
+    Returns set of relay session IDs that have been synced locally.
+    """
+    synced = set()
+    claude_projects = Path.home() / ".claude" / "projects"
+    if not claude_projects.exists():
+        return synced
+    for project_dir in claude_projects.iterdir():
+        if not project_dir.is_dir():
+            continue
+        for jsonl in project_dir.glob("*.jsonl"):
+            try:
+                with open(jsonl) as f:
+                    first_line = f.readline()
+                    if not first_line:
+                        continue
+                    data = json.loads(first_line)
+                    if data.get("type") == "sync_metadata":
+                        relay_id = data.get("relay_session_id")
+                        if relay_id:
+                            synced.add(relay_id)
+            except (json.JSONDecodeError, OSError):
+                continue
+    return synced
 
 
 def _infer_source(session: Session) -> str:
@@ -137,6 +168,8 @@ class SessionDetail(Static):
             f"[dim]Updated[/] {relative_time(s.updated_at)}",
             f"[dim]Created[/] {relative_time(s.created_at)}",
         ]
+        if s.synced_locally:
+            lines.append(f"[dim]Synced[/]  [magenta]⇅ local copy exists[/]")
         if s.pending_count:
             lines.append(f"[dim]Pending[/] [yellow bold]{s.pending_count} messages[/]")
         if is_local and s.local_pid:
@@ -270,6 +303,12 @@ class HappierTUI(App):
             local_children = await list_local_sessions()
             await merge_local_into_relay(sessions, local_children)
 
+        # Mark sessions that have been synced locally
+        synced_ids = _find_synced_relay_ids()
+        for s in sessions:
+            if s.relay_id in synced_ids:
+                s.synced_locally = True
+
         # Sort: connected first, then running, then by updated_at descending
         sessions.sort(key=lambda s: (
             not s.active,       # connected first
@@ -374,10 +413,11 @@ class HappierTUI(App):
                 # Title: bold if active/running, dim italic if inactive
                 title = s.title or "untitled"
                 title = title[:45]
+                synced_badge = " [magenta]⇅[/]" if s.synced_locally else ""
                 if s.active or s.local_alive:
-                    title_display = f"[bold]{title}[/]"
+                    title_display = f"[bold]{title}[/]{synced_badge}"
                 else:
-                    title_display = f"[dim italic]{title}[/]"
+                    title_display = f"[dim italic]{title}[/]{synced_badge}"
 
                 agent = f"[dim]{s.flavor}[/]"
                 path = _shorten_path(s.path or "?")
