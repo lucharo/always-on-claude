@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -212,7 +214,6 @@ class ChatScreen(Screen):
                 log.write("")
                 break
             if new_cursor == cursor and not events:
-                import asyncio
                 await asyncio.sleep(0.5)
             cursor = new_cursor
 

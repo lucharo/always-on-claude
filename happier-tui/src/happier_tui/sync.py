@@ -147,7 +147,7 @@ def relay_to_jsonl_lines(
                             "content": [block],
                             "stop_reason": stop_reason if is_last else None,
                             "stop_sequence": None,
-                            "usage": usage if is_last else {},
+                            **({"usage": usage} if is_last else {}),
                         },
                     }
                     lines.append(line)

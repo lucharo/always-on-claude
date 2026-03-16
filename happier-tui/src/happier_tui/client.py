@@ -132,14 +132,15 @@ async def get_session_runs(session_id: str) -> list[dict]:
     return result.get("data", {}).get("runs", [])
 
 
+MAX_CLI_MESSAGE_LEN = 100_000  # conservative limit for CLI arg length
+
+
 async def stream_start(
     session_id: str, run_id: str, message: str
 ) -> dict | None:
-    """Start a stream (send a message to a session).
-
-    Note: message is passed as a CLI argument. Very long messages (>128KB)
-    may hit OS argument length limits on some platforms.
-    """
+    """Start a stream (send a message to a session)."""
+    if len(message) > MAX_CLI_MESSAGE_LEN:
+        return None  # message too long for CLI arg
     result = await _run_happier_cmd(
         "session", "run", "stream-start", session_id, run_id, message,
         timeout=30.0,
@@ -296,22 +297,22 @@ def _get_httpx_client() -> "httpx.AsyncClient":
 
 
 async def _daemon_post(path: str, body: dict | None = None, timeout: float = 10.0) -> dict:
+    import httpx
+
     state = read_daemon_state()
     if not state or not state.http_port:
         return {"error": "No daemon running"}
-
-    try:
-        os.kill(state.pid, 0)
-    except OSError:
-        return {"error": "Daemon PID not running"}
 
     headers = {"Content-Type": "application/json"}
     if state.control_token:
         headers["x-happier-daemon-token"] = state.control_token
 
     url = f"http://127.0.0.1:{state.http_port}{path}"
-    client = _get_httpx_client()
-    resp = await client.post(url, json=body or {}, headers=headers, timeout=timeout)
+    try:
+        client = _get_httpx_client()
+        resp = await client.post(url, json=body or {}, headers=headers, timeout=timeout)
+    except (httpx.ConnectError, httpx.ConnectTimeout):
+        return {"error": "Daemon not reachable (not running or port changed)"}
     if resp.status_code != 200:
         return {"error": f"HTTP {resp.status_code}: {resp.text}"}
     return resp.json()

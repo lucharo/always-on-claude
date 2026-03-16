@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from pathlib import Path
 
@@ -69,8 +70,7 @@ def _infer_source(session: Session) -> str:
             return "daemon"
     # Heuristic: bare home dir with no project subpath → likely phone
     if session.path:
-        import re as _re
-        bare_home = _re.match(r"^(/home/[^/]+|/Users/[^/]+)/?$", session.path)
+        bare_home = re.match(r"^(/home/[^/]+|/Users/[^/]+)/?$", session.path)
         if bare_home or session.path == os.path.expanduser("~"):
             return "phone"
     return "terminal"
@@ -453,12 +453,8 @@ class HappierTUI(App):
         """Update the detail panel with the currently selected session."""
         detail = self.query_one(SessionDetail)
         session = self._get_selected_session()
-        # Force reactive update by setting to a different value first
-        if detail.session is not session:
-            detail.session = session
-        else:
-            detail.session = None
-            detail.session = session
+        detail.session = session
+        detail.refresh()
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         self._update_detail_panel()
