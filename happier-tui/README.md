@@ -105,20 +105,41 @@ Claude Code picks up the conversation and continues
 
 **Path normalisation** maps any `/home/<user>/X` → `~/X` on Mac, and `/Users/<user>/X` → `~/X` on Linux. No per-user config needed — but the directories must actually exist (via Mutagen or similar).
 
-**Limitations:**
-- Tool results are placeholders ("synced from relay — original output not available") since the relay doesn't store full tool output
-- The synced session is a fork — new UUID, shown as a separate session. The `sync_metadata` line links it back to the relay origin for deduplication
-- Only works when the project directory is available locally (via Mutagen or similar file sync)
-
 ## Cross-device session continuity
 
 | From → To | How | Works? |
 |-----------|-----|--------|
 | **MacBook → Phone** | Phone app sends messages through relay stream API — no local files needed | Yes |
 | **Arch → MacBook** | TUI ChatScreen reads history + sends messages through relay | Yes |
-| **MacBook → Arch (local resume)** | Sync JSONL from relay + Mutagen provides the code directory | Yes (needs Mutagen) |
-| **Arch → MacBook (local resume)** | Same — sync JSONL + Mutagen provides `~/Projects/` | Yes (needs Mutagen) |
-| **Phone → any machine** | TUI R key syncs + resumes, or Enter for chat view | Yes (R needs Mutagen) |
+| **MacBook → Arch (local resume)** | Sync JSONL from relay + Mutagen provides the code directory | Partial — see limitations |
+| **Arch → MacBook (local resume)** | Same — sync JSONL + Mutagen provides `~/Projects/` | Partial — see limitations |
+| **Phone → any machine** | TUI R key syncs + resumes, or Enter for chat view | Partial (R — see limitations) |
+
+## Known limitations
+
+### Local resume creates a fork, not a transfer ([#133](https://github.com/happier-dev/happier/issues/133))
+
+When you press R to resume a remote session locally, the TUI syncs the conversation and starts a new Claude session. This is a **fork** — the relay sees it as a separate session. The original session on the remote machine still exists.
+
+Happier has the right primitive for this (`session.continueWithReplay`) which does a proper transfer: fetches the encrypted transcript, builds a replay prompt, and spawns a linked session. But this RPC is only accessible from the relay cloud via socket.io — not exposed on the local daemon HTTP API or CLI.
+
+**Impact**: after local resume, you may see duplicate sessions. The TUI marks synced sessions with ⇅ and uses deterministic UUIDs to avoid accumulating forks, but it's a workaround.
+
+**Tracking**: [happier-dev/happier#133](https://github.com/happier-dev/happier/issues/133)
+
+### Local resume bypasses happier ([related: #131](https://github.com/happier-dev/happier/issues/131))
+
+Synced sessions resume via `claude --resume` directly, not via `happier`. This means the resumed session loses happier features: relay sync, phone access, session management. Using `happier --resume` instead would create a duplicate relay session because happier doesn't know this JSONL is a continuation of an existing relay session.
+
+**Tracking**: [happier-dev/happier#131](https://github.com/happier-dev/happier/issues/131)
+
+### Tool results are placeholders
+
+The relay doesn't store full tool output in its history. Synced JSOKNLs have placeholder tool results ("synced from relay — original output not available"). Claude can still continue the conversation but doesn't have the original tool output for context.
+
+### Requires file sync (Mutagen or similar)
+
+Local resume only works when the session's working directory exists on both machines. Path normalisation maps `/home/<user>/X` ↔ `/Users/<user>/X` automatically, but the files must actually be there. This assumes a setup like [Mutagen](https://mutagen.io/) syncing `~/Projects/` bidirectionally.
 
 ## Keybindings
 
