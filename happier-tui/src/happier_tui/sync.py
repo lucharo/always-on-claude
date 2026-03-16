@@ -228,8 +228,9 @@ async def sync_session_locally(
     # Determine local working directory
     cwd = normalize_path_for_local(session.path or "/")
 
-    # Generate a session UUID for the JSONL filename
-    session_uuid = str(uuid.uuid4())
+    # Deterministic UUID from relay ID — same relay session always maps to
+    # the same local file. This makes sync idempotent (transfer, not clone).
+    session_uuid = str(uuid.uuid5(uuid.NAMESPACE_URL, f"happier:{session.relay_id}"))
 
     # Transform relay messages to JSONL lines
     lines = relay_to_jsonl_lines(

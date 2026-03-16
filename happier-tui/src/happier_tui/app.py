@@ -561,8 +561,15 @@ class HappierTUI(App):
             return
 
         cwd = normalize_path_for_local(session.path or os.path.expanduser("~"))
-        # Resume directly via claude (not happier) since we generated a
-        # new session UUID that happier's relay doesn't know about
+        # Resume via the agent directly with the deterministic UUID.
+        # The UUID is derived from the relay ID (uuid5) so re-syncing is
+        # idempotent — same relay session always maps to same local file.
+        #
+        # NOTE: ideally we'd use happier's session.continueWithReplay RPC
+        # to do a proper transfer (same relay session, different host), but
+        # that's only exposed via socket.io, not the HTTP daemon API.
+        # For now we resume via claude directly to avoid happier creating
+        # a duplicate relay session.
         resume_id = jsonl_path.stem
         self.exit(result=("resume-synced", resume_id, cwd, session.flavor))
 
