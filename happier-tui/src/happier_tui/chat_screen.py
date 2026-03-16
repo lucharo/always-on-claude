@@ -14,22 +14,11 @@ from happier_tui.client import (
     get_session_runs,
     parse_history_messages,
     relative_time,
+    shorten_path,
     stream_cancel,
     stream_read,
     stream_start,
 )
-
-
-def _shorten_path(path: str) -> str:
-    import os
-    if not path:
-        return "?"
-    home = os.path.expanduser("~")
-    if path.startswith(home):
-        path = "~" + path[len(home):]
-    path = path.replace("/Users/luischavesrodriguez/", "~/")
-    path = path.replace("/home/luis/", "~/")
-    return path
 
 
 class ChatStatus(Static):
@@ -44,7 +33,7 @@ class ChatStatus(Static):
         icon = "[green]●[/]" if s.active else "[dim]○[/]"
         host = f"[bold]{s.host}[/]" if s.host else "?"
         title = s.title or "untitled"
-        path = _shorten_path(s.path or "?")
+        path = shorten_path(s.path or "?")
         return f"{icon} {host}  [bold]{title}[/]  [dim]{path}[/]"
 
 

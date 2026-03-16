@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import os
+import time
+from pathlib import Path
 
 from textual import work
 from textual.app import App, ComposeResult
@@ -10,9 +13,6 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
 from textual.widgets import DataTable, Footer, Input, Static
-
-import json
-from pathlib import Path
 
 from happier_tui.client import (
     Session,
@@ -22,11 +22,12 @@ from happier_tui.client import (
     list_local_sessions,
     merge_local_into_relay,
     normalize_hostname,
+    normalize_path_for_local,
     read_daemon_state,
     relative_time,
     relay_list_sessions,
+    shorten_path,
     stop_session,
-    normalize_path_for_local,
 )
 
 
@@ -66,23 +67,15 @@ def _infer_source(session: Session) -> str:
             return "terminal"
         if "daemon" in sb:
             return "daemon"
-    # Heuristic: /home/luis or ~ with no specific project path → likely phone
-    if session.path and session.path in ("/home/luis", os.path.expanduser("~")):
-        return "phone"
+    # Heuristic: bare home dir with no project subpath → likely phone
+    if session.path:
+        import re as _re
+        bare_home = _re.match(r"^(/home/[^/]+|/Users/[^/]+)/?$", session.path)
+        if bare_home or session.path == os.path.expanduser("~"):
+            return "phone"
     return "terminal"
 
 
-def _shorten_path(path: str) -> str:
-    """Shorten paths for display."""
-    if not path or path == "?":
-        return "?"
-    home = os.path.expanduser("~")
-    if path.startswith(home):
-        path = "~" + path[len(home):]
-    path = path.replace("/Users/luischavesrodriguez/", "~/")
-    path = path.replace("/home/luis/", "~/")
-    path = path.replace("~/Projects/", "~/P/")
-    return path
 
 
 def _session_status(s: Session) -> tuple[str, str]:
@@ -268,10 +261,12 @@ class HappierTUI(App):
     # Filter modes: "recent" (default) → "active" → "all"
     FILTER_MODES = ("recent", "active", "all")
 
-    sessions: list[Session] = []
-    _sessions_by_id: dict[str, Session] = {}
-    _filter_mode: str = "recent"  # default: last 24h + active/running
-    _search_query: str = ""
+    def __init__(self) -> None:
+        super().__init__()
+        self.sessions: list[Session] = []
+        self._sessions_by_id: dict[str, Session] = {}
+        self._filter_mode: str = "recent"
+        self._search_query: str = ""
 
     def compose(self) -> ComposeResult:
         yield StatusBar(id="status-bar")
@@ -334,7 +329,6 @@ class HappierTUI(App):
         status_bar.total_count = len(sessions)
 
         # Apply filters
-        import time
         visible = sessions
         filter_parts = []
         cutoff_24h = int((time.time() - 86400) * 1000)
@@ -428,7 +422,7 @@ class HappierTUI(App):
 
                 agent = f"[dim]{s.flavor}[/]"
                 short_id = f"[dim]{s.relay_id[:12]}…[/]"
-                path = _shorten_path(s.path or "?")
+                path = shorten_path(s.path or "?")
                 updated = relative_time(s.updated_at)
 
                 table.add_row(

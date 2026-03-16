@@ -135,7 +135,11 @@ async def get_session_runs(session_id: str) -> list[dict]:
 async def stream_start(
     session_id: str, run_id: str, message: str
 ) -> dict | None:
-    """Start a stream (send a message to a session)."""
+    """Start a stream (send a message to a session).
+
+    Note: message is passed as a CLI argument. Very long messages (>128KB)
+    may hit OS argument length limits on some platforms.
+    """
     result = await _run_happier_cmd(
         "session", "run", "stream-start", session_id, run_id, message,
         timeout=30.0,
@@ -278,9 +282,20 @@ def read_daemon_state() -> DaemonState | None:
     )
 
 
-async def _daemon_post(path: str, body: dict | None = None, timeout: float = 10.0) -> dict:
+_httpx_client: "httpx.AsyncClient | None" = None
+
+
+def _get_httpx_client() -> "httpx.AsyncClient":
+    """Reuse a single httpx.AsyncClient to avoid per-call overhead."""
     import httpx
 
+    global _httpx_client
+    if _httpx_client is None or _httpx_client.is_closed:
+        _httpx_client = httpx.AsyncClient()
+    return _httpx_client
+
+
+async def _daemon_post(path: str, body: dict | None = None, timeout: float = 10.0) -> dict:
     state = read_daemon_state()
     if not state or not state.http_port:
         return {"error": "No daemon running"}
@@ -295,11 +310,11 @@ async def _daemon_post(path: str, body: dict | None = None, timeout: float = 10.
         headers["x-happier-daemon-token"] = state.control_token
 
     url = f"http://127.0.0.1:{state.http_port}{path}"
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(url, json=body or {}, headers=headers, timeout=timeout)
-        if resp.status_code != 200:
-            return {"error": f"HTTP {resp.status_code}: {resp.text}"}
-        return resp.json()
+    client = _get_httpx_client()
+    resp = await client.post(url, json=body or {}, headers=headers, timeout=timeout)
+    if resp.status_code != 200:
+        return {"error": f"HTTP {resp.status_code}: {resp.text}"}
+    return resp.json()
 
 
 async def list_local_sessions() -> list[dict]:
@@ -360,6 +375,24 @@ def is_daemon_running() -> bool:
 # ---------------------------------------------------------------------------
 # Utilities
 # ---------------------------------------------------------------------------
+
+def shorten_path(path: str) -> str:
+    """Shorten a filesystem path for display.
+
+    Maps any home directory prefix to ~, then shortens ~/Projects/ to ~/P/.
+    Uses Path.home() so it works for any user on any machine.
+    """
+    if not path or path == "?":
+        return "?"
+    home = str(Path.home())
+    if path.startswith(home):
+        path = "~" + path[len(home):]
+    # Cross-machine: normalize any /Users/<user>/ or /home/<user>/ to ~/
+    path = re.sub(r"^/Users/[^/]+/", "~/", path)
+    path = re.sub(r"^/home/[^/]+/", "~/", path)
+    path = path.replace("~/Projects/", "~/P/")
+    return path
+
 
 def relative_time(epoch_ms: int) -> str:
     """Convert epoch milliseconds to a human-readable relative time."""
