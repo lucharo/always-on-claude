@@ -87,7 +87,11 @@ class ChatScreen(Screen):
         if not self._session.active:
             log = self.query_one(RichLog)
             log.write("")
-            log.write("[yellow on default] READ ONLY [/] [dim]Session is inactive — history only[/]")
+            log.write(
+                "[yellow on default] READ ONLY [/] "
+                "[dim]Session is not connected to relay — "
+                "messaging requires an active session on the remote machine[/]"
+            )
             log.write("")
             self.query_one("#chat-log").add_class("read-only")
             self.query_one(Input).disabled = True
@@ -157,12 +161,16 @@ class ChatScreen(Screen):
         self._streaming = True
         inp.disabled = True
 
-        # Get or create a run
+        # Get or create a run — requires session to be active on relay
         runs = await get_session_runs(self._session.relay_id)
         if runs:
             run_id = runs[0].get("id", "")
         else:
-            log.write("[yellow]No active run found — cannot send message[/]")
+            log.write(
+                "[yellow]Session is not connected to relay — "
+                "the agent must be running on the remote machine[/]"
+            )
+            log.write("[dim]Start a session on arch, then try again[/]")
             self._streaming = False
             inp.disabled = False
             return
@@ -170,7 +178,10 @@ class ChatScreen(Screen):
         # Start stream
         stream_data = await stream_start(self._session.relay_id, run_id, message)
         if not stream_data:
-            log.write("[red]Failed to start stream[/]")
+            log.write(
+                "[red]Failed to start stream — "
+                "session may have disconnected from relay[/]"
+            )
             self._streaming = False
             inp.disabled = False
             return
