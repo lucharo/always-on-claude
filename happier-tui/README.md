@@ -133,6 +133,14 @@ Synced sessions resume via `claude --resume` directly, not via `happier`. This m
 
 **Tracking**: [happier-dev/happier#131](https://github.com/happier-dev/happier/issues/131)
 
+### Can't message inactive sessions ([#134](https://github.com/happier-dev/happier/issues/134))
+
+The stream API (`stream-start`/`stream-read`) only works when a session is actively connected to the relay via socket.io. If the agent process isn't running on the remote machine, messaging fails with "RPC method not available."
+
+The phone app can message inactive sessions because it uses the relay's server-side pending message queue — messages are stored on the relay and delivered when the session reconnects. This queue API isn't exposed in the CLI, so the TUI can't do the same. The chat view shows history for inactive sessions but is read-only until the session reconnects.
+
+**Tracking**: [happier-dev/happier#134](https://github.com/happier-dev/happier/issues/134)
+
 ### Tool results are placeholders
 
 The relay doesn't store full tool output in its history. Synced JSOKNLs have placeholder tool results ("synced from relay — original output not available"). Claude can still continue the conversation but doesn't have the original tool output for context.
