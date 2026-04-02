@@ -165,6 +165,14 @@ mutagen sync terminate projects
 2. Check server is on: `ping arch-lenovo`
 3. Check SSH: `ssh arch-lenovo 'echo ok'`
 
+### MagicDNS Broken on macOS
+
+If `tailscale ping arch` works but `curl http://arch:3001/` fails with `Could not resolve host`, the Tailscale network is up and the problem is local macOS DNS integration.
+
+For macOS laptops, prefer the standalone Tailscale app when you want reliable MagicDNS and hostname-based access. It still provides a usable `tailscale` CLI on the machine.
+
+Keep the open-source `tailscale + tailscaled` variant only if that Mac must act as a **Tailscale SSH server**. After switching variants, sign in again and remove the stale old device entry once the new node is online.
+
 ### Tailscale File Sharing
 
 Send files to any device on your tailnet (including phones with Tailscale installed):
@@ -234,4 +242,3 @@ mutagen sync create \
   --ignore=".env.local" \
   ~/Projects server:/Users/luischavesrodriguez/Projects
 ```
-
