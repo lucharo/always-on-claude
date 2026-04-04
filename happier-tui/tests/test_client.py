@@ -458,4 +458,42 @@ async def test_merge_skips_flavor_for_remote():
 
     await merge_local_into_relay(relay, children)
 
-    assert relay[0].flavor == "claude"  # default, not enriched
+    assert relay[0].flavor == ""  # unknown — relay doesn't expose flavor
+
+
+# ---------------------------------------------------------------------------
+# resume-synced command construction (app.main)
+# ---------------------------------------------------------------------------
+
+
+def test_resume_synced_unknown_flavor():
+    """Unknown flavor → happier --resume (no flavor arg)."""
+    from happier_tui.app import main
+    with patch("happier_tui.app.HappierTUI") as MockApp:
+        MockApp.return_value.run.return_value = ("resume-synced", "uuid-123", "/tmp", "")
+        with patch("happier_tui.app.os.execvp") as mock_exec:
+            with patch("happier_tui.app.os.path.isdir", return_value=True):
+                main()
+            mock_exec.assert_called_once_with("happier", ["happier", "--resume", "uuid-123"])
+
+
+def test_resume_synced_codex_flavor():
+    """Codex flavor → happier codex --resume."""
+    from happier_tui.app import main
+    with patch("happier_tui.app.HappierTUI") as MockApp:
+        MockApp.return_value.run.return_value = ("resume-synced", "uuid-456", "/tmp", "codex")
+        with patch("happier_tui.app.os.execvp") as mock_exec:
+            with patch("happier_tui.app.os.path.isdir", return_value=True):
+                main()
+            mock_exec.assert_called_once_with("happier", ["happier", "codex", "--resume", "uuid-456"])
+
+
+def test_resume_synced_claude_flavor():
+    """Claude flavor → happier --resume (no extra arg)."""
+    from happier_tui.app import main
+    with patch("happier_tui.app.HappierTUI") as MockApp:
+        MockApp.return_value.run.return_value = ("resume-synced", "uuid-789", "/tmp", "claude")
+        with patch("happier_tui.app.os.execvp") as mock_exec:
+            with patch("happier_tui.app.os.path.isdir", return_value=True):
+                main()
+            mock_exec.assert_called_once_with("happier", ["happier", "--resume", "uuid-789"])

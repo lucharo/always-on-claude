@@ -43,7 +43,7 @@ class Session:
     local_alive: bool = False
     claude_session_id: str | None = None
     started_by: str | None = None
-    flavor: str = "claude"
+    flavor: str = ""  # empty = unknown (relay API doesn't expose flavor)
     # New fields from updated API
     active_at: int = 0  # epoch ms — last activity (distinct from updated_at)
     permission_mode: str = ""  # e.g. "default", "bypassPermissions"

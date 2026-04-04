@@ -168,7 +168,7 @@ class SessionDetail(Static):
             f"[dim]Happier[/] [cyan]{s.relay_id}[/]",
             f"[dim]Status[/]  {status_label}",
             f"[dim]Host[/]    {'[bold]' if is_local else '[cyan]'}{normalize_hostname(s.host or '?')}[/]",
-            f"[dim]Agent[/]   {s.flavor}",
+            f"[dim]Agent[/]   {s.flavor or '[dim]?[/]'}",
         ]
         if s.permission_mode:
             lines.append(f"[dim]Perms[/]   {s.permission_mode}")
@@ -457,7 +457,7 @@ class HappierTUI(App):
                 else:
                     title_display = f"[dim italic]{title}[/]{synced_badge}"
 
-                agent = f"[dim]{s.flavor}[/]"
+                agent = f"[dim]{s.flavor or '?'}[/]"
                 short_id = f"[dim]{s.relay_id[:12]}…[/]"
                 path = shorten_path(s.path or "?")
                 updated = relative_time(s.updated_at)
