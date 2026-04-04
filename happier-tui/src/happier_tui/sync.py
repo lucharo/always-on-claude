@@ -209,11 +209,13 @@ def jsonl_path_for_session(
 
 async def sync_session_locally(
     session: Session,
-    limit: int = 500,
+    limit: int = 10_000,
 ) -> tuple[Path, int]:
     """Pull relay history and write it as a local JSONL file.
 
     Returns (path_to_jsonl, message_count).
+    The relay history API does not paginate, so we request a high limit
+    to capture full sessions. The API returns only what exists.
     """
     # Pull full history from relay
     raw = await get_session_history(

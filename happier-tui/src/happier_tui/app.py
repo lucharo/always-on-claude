@@ -576,7 +576,14 @@ class HappierTUI(App):
             cwd = normalize_path_for_local(cwd)
             self.exit(result=("resume-yolo", session.relay_id, cwd, session.flavor))
         else:
-            # Remote session: sync conversation from relay first
+            # Remote session: sync is Claude-format only (~/.claude/projects/)
+            if session.flavor and session.flavor not in ("claude", ""):
+                self.notify(
+                    f"Synced resume not supported for {session.flavor} sessions",
+                    severity="error",
+                )
+                return
+            # Sync conversation from relay first
             self._sync_and_resume(session)
 
     @work(exclusive=True)
