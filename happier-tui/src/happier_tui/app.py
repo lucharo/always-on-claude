@@ -744,15 +744,18 @@ def main() -> None:
 
         os.execvp("happier", cmd)
     elif result[0] == "resume-synced":
-        # Synced from relay — resume directly via the agent binary
-        # (not happier, since the relay doesn't know this session UUID)
+        # Synced from relay — use happier with flavor so it resolves the
+        # correct agent binary. We can't use the agent directly because
+        # the relay API doesn't expose flavor for remote sessions.
         _, resume_id, cwd, flavor = result
         if os.path.isdir(cwd):
             os.chdir(cwd)
 
-        agent = flavor or "claude"
-        cmd = [agent, "--resume", resume_id]
-        os.execvp(agent, cmd)
+        cmd = ["happier"]
+        if flavor and flavor != "claude":
+            cmd.append(flavor)
+        cmd.extend(["--resume", resume_id])
+        os.execvp("happier", cmd)
     elif result[0] == "new-configured":
         config = result[1]
         flavor = config.get("flavor", "claude")

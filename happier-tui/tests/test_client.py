@@ -427,3 +427,35 @@ def test_infer_flavor_timeout():
     import subprocess as sp
     with patch("happier_tui.client.subprocess.run", side_effect=sp.TimeoutExpired("ps", 2)):
         assert _infer_flavor_from_pid(12345) == ""
+
+
+# ---------------------------------------------------------------------------
+# merge_local_into_relay flavor enrichment
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_merge_enriches_flavor_for_local():
+    """Local sessions get flavor from _infer_flavor_from_pid."""
+    import platform
+    local_host = platform.node().split(".")[0].lower()
+
+    relay = [Session(relay_id="s1", host=local_host)]
+    children = [{"happySessionId": "s1", "pid": 42}]
+
+    with patch("happier_tui.client.os.kill"):
+        with patch("happier_tui.client._infer_flavor_from_pid", return_value="codex"):
+            await merge_local_into_relay(relay, children)
+
+    assert relay[0].flavor == "codex"
+
+
+@pytest.mark.asyncio
+async def test_merge_skips_flavor_for_remote():
+    """Remote sessions keep default flavor (can't infer from PID)."""
+    relay = [Session(relay_id="s1", host="remote-host-xyz")]
+    children = []
+
+    await merge_local_into_relay(relay, children)
+
+    assert relay[0].flavor == "claude"  # default, not enriched
