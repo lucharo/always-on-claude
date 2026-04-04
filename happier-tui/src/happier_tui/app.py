@@ -568,17 +568,15 @@ class HappierTUI(App):
             self.notify("No session selected", severity="warning")
             return
 
-        ok, reason = can_resume_locally(session)
-        if not ok:
-            self.notify(f"Cannot resume locally: {reason}", severity="error")
-            return
-
         if is_local_host(session.host):
+            ok, reason = can_resume_locally(session)
+            if not ok:
+                self.notify(f"Cannot resume: {reason}", severity="error")
+                return
             cwd = session.path or os.path.expanduser("~")
             cwd = normalize_path_for_local(cwd)
             self.exit(result=("resume-yolo", session.relay_id, cwd, session.flavor))
         else:
-            # Remote session: check sync-resume eligibility
             ok, reason = can_sync_resume(session)
             if not ok:
                 self.notify(f"Cannot sync-resume: {reason}", severity="error")
