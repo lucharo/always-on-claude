@@ -501,6 +501,23 @@ def relative_time(epoch_ms: int) -> str:
     return f"{days // 30}mo ago"
 
 
+def can_sync_resume(session: Session) -> tuple[bool, str]:
+    """Check if a remote session can be synced and resumed locally.
+
+    Sync writes Claude-format JSONL, so only Claude (or unknown-flavor)
+    sessions are eligible. The relay API doesn't expose flavor for remote
+    sessions, so unknown flavor is assumed Claude-compatible.
+
+    Returns (eligible, reason_if_not).
+    """
+    if session.flavor and session.flavor not in ("claude", ""):
+        return False, f"sync not supported for {session.flavor}"
+    ok, reason = can_resume_locally(session)
+    if not ok:
+        return False, reason
+    return True, ""
+
+
 def can_resume_locally(session: Session) -> tuple[bool, str]:
     """Check if a session can be resumed locally.
 

@@ -19,6 +19,7 @@ from happier_tui.client import (
     Session,
     archive_session,
     can_resume_locally,
+    can_sync_resume,
     is_local_host,
     is_daemon_running,
     list_local_sessions,
@@ -196,15 +197,16 @@ class SessionDetail(Static):
         lines.append("")
 
         # Resume availability
-        ok, reason = can_resume_locally(s)
         if is_local:
             lines.append("[dim]Enter: resume  R: resume (yolo)[/]")
-        elif ok:
-            lines.append("[dim]Enter: chat view[/]")
-            lines.append("[dim]R: local resume (needs file sync)[/]")
         else:
-            lines.append(f"[dim]Enter: chat view[/]")
-            lines.append(f"[red]R: blocked ({reason})[/]")
+            sync_ok, sync_reason = can_sync_resume(s)
+            if sync_ok:
+                lines.append("[dim]Enter: chat view[/]")
+                lines.append("[dim]R: sync + local resume[/]")
+            else:
+                lines.append("[dim]Enter: chat view[/]")
+                lines.append(f"[red]R: blocked ({sync_reason})[/]")
 
         return "\n".join(lines)
 
@@ -576,14 +578,11 @@ class HappierTUI(App):
             cwd = normalize_path_for_local(cwd)
             self.exit(result=("resume-yolo", session.relay_id, cwd, session.flavor))
         else:
-            # Remote session: sync is Claude-format only (~/.claude/projects/)
-            if session.flavor and session.flavor not in ("claude", ""):
-                self.notify(
-                    f"Synced resume not supported for {session.flavor} sessions",
-                    severity="error",
-                )
+            # Remote session: check sync-resume eligibility
+            ok, reason = can_sync_resume(session)
+            if not ok:
+                self.notify(f"Cannot sync-resume: {reason}", severity="error")
                 return
-            # Sync conversation from relay first
             self._sync_and_resume(session)
 
     @work(exclusive=True)
