@@ -17,6 +17,7 @@ from textual.widgets import DataTable, Footer, Input, Static
 
 from happier_tui.client import (
     Session,
+    archive_session,
     can_resume_locally,
     is_local_host,
     is_daemon_running,
@@ -27,8 +28,20 @@ from happier_tui.client import (
     read_daemon_state,
     relative_time,
     relay_list_sessions,
+    send_notification,
+    set_session_model,
+    set_session_permission_mode,
+    set_session_title,
     shorten_path,
     stop_session,
+    unarchive_session,
+)
+from happier_tui.modals import (
+    ModelModal,
+    NewSessionModal,
+    NotifyModal,
+    PermissionModal,
+    TitleModal,
 )
 
 
@@ -156,11 +169,21 @@ class SessionDetail(Static):
             f"[dim]Status[/]  {status_label}",
             f"[dim]Host[/]    {'[bold]' if is_local else '[cyan]'}{normalize_hostname(s.host or '?')}[/]",
             f"[dim]Agent[/]   {s.flavor}",
+        ]
+        if s.permission_mode:
+            lines.append(f"[dim]Perms[/]   {s.permission_mode}")
+        if s.model_id:
+            lines.append(f"[dim]Model[/]   {s.model_id}")
+        lines.extend([
             f"[dim]Source[/]  {source}",
             f"[dim]Dir[/]     {path}",
+        ])
+        if s.active_at:
+            lines.append(f"[dim]Active[/]  {relative_time(s.active_at)}")
+        lines.extend([
             f"[dim]Updated[/] {relative_time(s.updated_at)}",
             f"[dim]Created[/] {relative_time(s.created_at)}",
-        ]
+        ])
         if s.synced_locally and s.local_session_uuid:
             lines.append(f"[dim]Local[/]   [magenta]⇅ {s.local_session_uuid}[/]")
         elif s.synced_locally:
@@ -252,14 +275,19 @@ class HappierTUI(App):
         Binding("i", "toggle_detail", "Detail"),
         Binding("s", "stop_selected", "Stop"),
         Binding("n", "new_session", "New"),
+        Binding("T", "set_title", "Title"),
+        Binding("p", "set_perms", "Perms"),
+        Binding("m", "set_model", "Model"),
+        Binding("d", "toggle_archive", "Archive"),
+        Binding("exclamation_mark", "send_notify", "Notify", show=False),
         Binding("t", "toggle_theme", "Theme"),
         Binding("q", "quit", "Quit"),
         Binding("ctrl+c", "quit", show=False),
         Binding("ctrl+d", "quit", show=False),
     ]
 
-    # Filter modes: "recent" (default) → "active" → "all"
-    FILTER_MODES = ("recent", "active", "all")
+    # Filter modes: "recent" (default) → "active" → "all" → "archived"
+    FILTER_MODES = ("recent", "active", "all", "archived")
 
     def __init__(self) -> None:
         super().__init__()
@@ -290,7 +318,8 @@ class HappierTUI(App):
         status_bar = self.query_one(StatusBar)
 
         # Primary: relay sessions
-        sessions = await relay_list_sessions()
+        include_archived = self._filter_mode == "archived"
+        sessions = await relay_list_sessions(include_archived=include_archived)
         status_bar.relay_ok = len(sessions) > 0
 
         # Secondary: merge local daemon data
@@ -342,6 +371,9 @@ class HappierTUI(App):
         elif self._filter_mode == "active":
             visible = [s for s in visible if s.active or s.local_alive]
             filter_parts.append("active/running")
+        elif self._filter_mode == "archived":
+            visible = [s for s in visible if s.archived_at]
+            filter_parts.append("archived")
         # "all" → no filter
 
         if self._search_query:
@@ -387,6 +419,11 @@ class HappierTUI(App):
                     f"[dim]No sessions in the last 24 hours[/]\n"
                     f"[dim]{n_total} older sessions hidden[/]\n\n"
                     f"[dim]Press [bold]a[/bold] to show more[/]"
+                )
+            elif self._filter_mode == "archived":
+                empty_msg.update(
+                    "[dim]No archived sessions[/]\n\n"
+                    "[dim]Press [bold]a[/bold] to cycle back[/]"
                 )
             elif self._search_query:
                 empty_msg.update(
@@ -464,11 +501,16 @@ class HappierTUI(App):
         self.notify("Refreshing…")
 
     def action_cycle_filter(self) -> None:
-        """Cycle filter: recent → active → all → recent."""
+        """Cycle filter: recent → active → all → archived → recent."""
         modes = self.FILTER_MODES
         idx = modes.index(self._filter_mode)
         self._filter_mode = modes[(idx + 1) % len(modes)]
-        labels = {"recent": "Recent (24h)", "active": "Active/running only", "all": "All sessions"}
+        labels = {
+            "recent": "Recent (24h)",
+            "active": "Active/running only",
+            "all": "All sessions",
+            "archived": "Archived sessions",
+        }
         self.notify(labels[self._filter_mode])
         self.refresh_sessions()
 
@@ -577,7 +619,101 @@ class HappierTUI(App):
         self.refresh_sessions()
 
     def action_new_session(self) -> None:
-        self.exit(result=("new", os.getcwd()))
+        """Open new session modal for flavor/perms/chrome selection."""
+        def _on_result(result: dict | None) -> None:
+            if result:
+                self.exit(result=("new-configured", result))
+        self.push_screen(NewSessionModal(), callback=_on_result)
+
+    def action_set_title(self) -> None:
+        """Set title of selected session."""
+        session = self._get_selected_session()
+        if not session:
+            self.notify("No session selected", severity="warning")
+            return
+        def _on_result(title: str | None) -> None:
+            if title is not None:
+                self._apply_title(session.relay_id, title)
+        self.push_screen(TitleModal(session.title or ""), callback=_on_result)
+
+    @work(exclusive=True)
+    async def _apply_title(self, session_id: str, title: str) -> None:
+        if await set_session_title(session_id, title):
+            self.notify(f"Title → {title}")
+        else:
+            self.notify("Failed to set title", severity="error")
+        self.refresh_sessions()
+
+    def action_set_perms(self) -> None:
+        """Set permission mode of selected session."""
+        session = self._get_selected_session()
+        if not session:
+            self.notify("No session selected", severity="warning")
+            return
+        def _on_result(mode: str | None) -> None:
+            if mode is not None:
+                self._apply_perms(session.relay_id, mode)
+        self.push_screen(PermissionModal(session.permission_mode), callback=_on_result)
+
+    @work(exclusive=True)
+    async def _apply_perms(self, session_id: str, mode: str) -> None:
+        if await set_session_permission_mode(session_id, mode):
+            self.notify(f"Perms → {mode}")
+        else:
+            self.notify("Failed to set permission mode", severity="error")
+        self.refresh_sessions()
+
+    def action_set_model(self) -> None:
+        """Set model of selected session."""
+        session = self._get_selected_session()
+        if not session:
+            self.notify("No session selected", severity="warning")
+            return
+        def _on_result(model: str | None) -> None:
+            if model is not None:
+                self._apply_model(session.relay_id, model)
+        self.push_screen(ModelModal(session.model_id), callback=_on_result)
+
+    @work(exclusive=True)
+    async def _apply_model(self, session_id: str, model_id: str) -> None:
+        if await set_session_model(session_id, model_id):
+            self.notify(f"Model → {model_id}")
+        else:
+            self.notify("Failed to set model", severity="error")
+        self.refresh_sessions()
+
+    @work(exclusive=True)
+    async def action_toggle_archive(self) -> None:
+        """Archive or unarchive the selected session."""
+        session = self._get_selected_session()
+        if not session:
+            self.notify("No session selected", severity="warning")
+            return
+        if session.archived_at:
+            if await unarchive_session(session.relay_id):
+                self.notify("Unarchived")
+            else:
+                self.notify("Failed to unarchive", severity="error")
+        else:
+            if await archive_session(session.relay_id):
+                self.notify("Archived")
+            else:
+                self.notify("Failed to archive", severity="error")
+        self.refresh_sessions()
+
+    def action_send_notify(self) -> None:
+        """Send a push notification."""
+        def _on_result(message: str | None) -> None:
+            if message:
+                self._do_notify(message)
+        self.push_screen(NotifyModal(), callback=_on_result)
+
+    @work(exclusive=True)
+    async def _do_notify(self, message: str) -> None:
+        if await send_notification(message):
+            self.notify("Notification sent")
+        else:
+            self.notify("Failed to send notification", severity="error")
 
     def action_toggle_theme(self) -> None:
         """Toggle between dark and light mode."""
@@ -617,6 +753,21 @@ def main() -> None:
         agent = flavor or "claude"
         cmd = [agent, "--resume", resume_id]
         os.execvp(agent, cmd)
+    elif result[0] == "new-configured":
+        config = result[1]
+        flavor = config.get("flavor", "claude")
+        perm = config.get("permission_mode", "default")
+        chrome = config.get("chrome", False)
+        cmd = ["happier"]
+        if flavor != "claude":
+            cmd.append(flavor)
+        if perm == "bypassPermissions":
+            cmd.append("--yolo")
+        elif perm != "default":
+            cmd.extend(["--permission-mode", perm])
+        if chrome:
+            cmd.append("--chrome")
+        os.execvp("happier", cmd)
     elif result[0] == "new":
         os.execvp("happier", ["happier", "--yolo"])
     elif result[0] == "logs":

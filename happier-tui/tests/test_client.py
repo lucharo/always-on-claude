@@ -10,14 +10,23 @@ import pytest
 import pytest_asyncio
 
 from happier_tui.client import (
+    AGENT_FLAVORS,
+    COMMON_MODELS,
+    PERMISSION_MODES,
     Session,
-    normalize_path_for_local,
     _summarize_tool_use,
+    archive_session,
     can_resume_locally,
     get_local_hostname,
     merge_local_into_relay,
+    normalize_path_for_local,
     parse_history_messages,
     relative_time,
+    send_notification,
+    set_session_model,
+    set_session_permission_mode,
+    set_session_title,
+    unarchive_session,
 )
 
 
@@ -251,3 +260,125 @@ def test_get_local_hostname_no_fqdn():
     hostname = get_local_hostname()
     assert "." not in hostname  # Should strip FQDN
     assert len(hostname) > 0
+
+
+# ---------------------------------------------------------------------------
+# Session new fields
+# ---------------------------------------------------------------------------
+
+
+def test_session_new_fields_defaults():
+    s = Session(relay_id="abc123")
+    assert s.active_at == 0
+    assert s.permission_mode == ""
+    assert s.model_id == ""
+
+
+def test_session_new_fields_populated():
+    s = Session(
+        relay_id="abc123",
+        active_at=1700000000000,
+        permission_mode="bypassPermissions",
+        model_id="claude-opus-4-6",
+    )
+    assert s.active_at == 1700000000000
+    assert s.permission_mode == "bypassPermissions"
+    assert s.model_id == "claude-opus-4-6"
+
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+
+def test_permission_modes_non_empty():
+    assert len(PERMISSION_MODES) >= 3
+    assert "default" in PERMISSION_MODES
+    assert "bypassPermissions" in PERMISSION_MODES
+
+
+def test_common_models_non_empty():
+    assert len(COMMON_MODELS) >= 2
+
+
+def test_agent_flavors_includes_claude():
+    assert "claude" in AGENT_FLAVORS
+    assert "codex" in AGENT_FLAVORS
+
+
+# ---------------------------------------------------------------------------
+# API wrappers (mock _run_happier_cmd)
+# ---------------------------------------------------------------------------
+
+_CMD_PATH = "happier_tui.client._run_happier_cmd"
+
+
+@pytest.mark.asyncio
+async def test_set_session_title_success():
+    with patch(_CMD_PATH, new_callable=AsyncMock) as mock:
+        mock.return_value = {"ok": True, "data": {"sessionId": "s1", "title": "New"}}
+        result = await set_session_title("s1", "New")
+        assert result is True
+        mock.assert_called_once_with("session", "set-title", "s1", "New")
+
+
+@pytest.mark.asyncio
+async def test_set_session_title_failure():
+    with patch(_CMD_PATH, new_callable=AsyncMock) as mock:
+        mock.return_value = None
+        result = await set_session_title("s1", "New")
+        assert result is False
+
+
+@pytest.mark.asyncio
+async def test_set_session_permission_mode():
+    with patch(_CMD_PATH, new_callable=AsyncMock) as mock:
+        mock.return_value = {"ok": True, "data": {"permissionMode": "plan"}}
+        result = await set_session_permission_mode("s1", "plan")
+        assert result is True
+        mock.assert_called_once_with("session", "set-permission-mode", "s1", "plan")
+
+
+@pytest.mark.asyncio
+async def test_set_session_model():
+    with patch(_CMD_PATH, new_callable=AsyncMock) as mock:
+        mock.return_value = {"ok": True, "data": {"modelId": "claude-sonnet-4-6"}}
+        result = await set_session_model("s1", "claude-sonnet-4-6")
+        assert result is True
+        mock.assert_called_once_with("session", "set-model", "s1", "claude-sonnet-4-6")
+
+
+@pytest.mark.asyncio
+async def test_archive_session():
+    with patch(_CMD_PATH, new_callable=AsyncMock) as mock:
+        mock.return_value = {"ok": True}
+        result = await archive_session("s1")
+        assert result is True
+        mock.assert_called_once_with("session", "archive", "s1")
+
+
+@pytest.mark.asyncio
+async def test_unarchive_session():
+    with patch(_CMD_PATH, new_callable=AsyncMock) as mock:
+        mock.return_value = {"ok": True}
+        result = await unarchive_session("s1")
+        assert result is True
+        mock.assert_called_once_with("session", "unarchive", "s1")
+
+
+@pytest.mark.asyncio
+async def test_send_notification():
+    with patch(_CMD_PATH, new_callable=AsyncMock) as mock:
+        mock.return_value = {"ok": True}
+        result = await send_notification("Hello", "Test")
+        assert result is True
+        mock.assert_called_once_with("notify", "-p", "Hello", "-t", "Test")
+
+
+@pytest.mark.asyncio
+async def test_send_notification_default_title():
+    with patch(_CMD_PATH, new_callable=AsyncMock) as mock:
+        mock.return_value = {"ok": True}
+        result = await send_notification("Hello")
+        assert result is True
+        mock.assert_called_once_with("notify", "-p", "Hello", "-t", "Happier")

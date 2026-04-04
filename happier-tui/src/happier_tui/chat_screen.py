@@ -36,7 +36,8 @@ class ChatStatus(Static):
         host = f"[bold]{s.host}[/]" if s.host else "?"
         title = s.title or "untitled"
         path = shorten_path(s.path or "?")
-        return f"{icon} {host}  [bold]{title}[/]  [dim]{path}[/]"
+        perms = f"  [dim]{s.permission_mode}[/]" if s.permission_mode else ""
+        return f"{icon} {host}  [bold]{title}[/]  [dim]{path}[/]{perms}"
 
 
 class ChatScreen(Screen):

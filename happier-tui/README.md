@@ -5,10 +5,13 @@ A terminal dashboard for all your [Happier](https://github.com/gptlabs/happier) 
 ## What works for everyone vs what's specific to our setup
 
 **Works for anyone with happier + relay:**
-- Session list across all machines (host, agent, title, status)
-- Filters (recent/active/all), search, detail sidebar
+- Session list across all machines (host, agent, title, status, permission mode, model)
+- Filters (recent/active/all/archived), search, detail sidebar
 - Remote chat view via relay stream API (Enter on remote session)
 - Local resume of local sessions (Enter on local session)
+- Session management: set title, permission mode, model, archive/unarchive
+- New session with flavor selection (claude/codex/gemini/opencode), permission mode, Chrome toggle
+- Push notifications to connected mobile devices
 
 **Requires our specific multi-machine setup:**
 - **Local resume of remote sessions** (R key) — needs all of:
@@ -105,6 +108,25 @@ Claude Code picks up the conversation and continues
 
 **Path normalisation** maps any `/home/<user>/X` → `~/X` on Mac, and `/Users/<user>/X` → `~/X` on Linux. No per-user config needed — but the directories must actually exist (via Mutagen or similar).
 
+## Session management
+
+The TUI exposes Happier's session management API via keybindings:
+
+- **Set title** (`T`): rename a session for easier identification
+- **Permission mode** (`p`): switch between `default`, `plan`, `acceptEdits`, `bypassPermissions`
+- **Model** (`m`): switch between `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-haiku-4-5`
+- **Archive** (`d`): hide a session from the default view; press `d` again in the "archived" filter to unarchive
+- **Push notification** (`!`): send a message to your connected mobile devices
+
+### New session flow
+
+Pressing `n` opens a modal to configure:
+- **Agent flavor**: claude, codex, gemini, or opencode
+- **Permission mode**: controls what the agent can do without asking
+- **Chrome access**: enable browser automation for the session
+
+The TUI builds the appropriate `happier` command with `--yolo`, `--permission-mode`, `--chrome` flags as needed.
+
 ## Cross-device session continuity
 
 | From → To | How | Works? |
@@ -151,18 +173,23 @@ Local resume only works when the session's working directory exists on both mach
 
 ## Keybindings
 
-| Key     | Action                              |
-|---------|-------------------------------------|
-| Enter   | Resume local / open remote chat     |
-| R       | Local resume (syncs from relay first) |
-| a       | Cycle filter: recent → active → all |
-| /       | Search by title or path             |
-| i       | Toggle detail sidebar               |
-| t       | Toggle dark/light theme             |
-| r       | Refresh session list                |
-| s       | Stop selected session               |
-| n       | New session                         |
-| q       | Quit                                |
+| Key     | Action                                          |
+|---------|-------------------------------------------------|
+| Enter   | Resume local / open remote chat                 |
+| R       | Local resume (syncs from relay first)            |
+| n       | New session (flavor/perms/chrome selection)       |
+| T       | Set session title                                |
+| p       | Set permission mode (default/plan/acceptEdits/bypassPermissions) |
+| m       | Set model (opus/sonnet/haiku)                    |
+| d       | Archive / unarchive session                      |
+| !       | Send push notification                           |
+| a       | Cycle filter: recent → active → all → archived   |
+| /       | Search by title or path                          |
+| i       | Toggle detail sidebar                            |
+| t       | Toggle dark/light theme                          |
+| r       | Refresh session list                             |
+| s       | Stop selected session                            |
+| q       | Quit                                             |
 
 ## Install & run
 

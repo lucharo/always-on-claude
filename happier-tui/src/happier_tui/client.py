@@ -44,6 +44,10 @@ class Session:
     claude_session_id: str | None = None
     started_by: str | None = None
     flavor: str = "claude"
+    # New fields from updated API
+    active_at: int = 0  # epoch ms — last activity (distinct from updated_at)
+    permission_mode: str = ""  # e.g. "default", "bypassPermissions"
+    model_id: str = ""  # e.g. "claude-opus-4-6"
 
 
 def get_local_hostname() -> str:
@@ -106,6 +110,9 @@ async def relay_list_sessions(include_archived: bool = False) -> list[Session]:
             updated_at=s.get("updatedAt", 0),
             archived_at=s.get("archivedAt"),
             pending_count=s.get("pendingCount", 0),
+            active_at=s.get("activeAt", 0),
+            permission_mode=s.get("permissionMode", ""),
+            model_id=s.get("modelId", ""),
         ))
 
     return sessions
@@ -171,6 +178,53 @@ async def stream_cancel(
     result = await _run_happier_cmd(
         "session", "run", "stream-cancel", session_id, run_id, stream_id,
     )
+    return bool(result and result.get("ok"))
+
+
+# ---------------------------------------------------------------------------
+# Session management
+# ---------------------------------------------------------------------------
+
+PERMISSION_MODES = ["default", "plan", "acceptEdits", "bypassPermissions"]
+COMMON_MODELS = [
+    "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5",
+]
+AGENT_FLAVORS = ["claude", "codex", "gemini", "opencode"]
+
+
+async def set_session_title(session_id: str, title: str) -> bool:
+    """Set the title of a session."""
+    result = await _run_happier_cmd("session", "set-title", session_id, title)
+    return bool(result and result.get("ok"))
+
+
+async def set_session_permission_mode(session_id: str, mode: str) -> bool:
+    """Set the permission mode of a session."""
+    result = await _run_happier_cmd("session", "set-permission-mode", session_id, mode)
+    return bool(result and result.get("ok"))
+
+
+async def set_session_model(session_id: str, model_id: str) -> bool:
+    """Set the model of a session."""
+    result = await _run_happier_cmd("session", "set-model", session_id, model_id)
+    return bool(result and result.get("ok"))
+
+
+async def archive_session(session_id: str) -> bool:
+    """Archive a session."""
+    result = await _run_happier_cmd("session", "archive", session_id)
+    return bool(result and result.get("ok"))
+
+
+async def unarchive_session(session_id: str) -> bool:
+    """Unarchive a session."""
+    result = await _run_happier_cmd("session", "unarchive", session_id)
+    return bool(result and result.get("ok"))
+
+
+async def send_notification(message: str, title: str = "Happier") -> bool:
+    """Send a push notification to connected devices."""
+    result = await _run_happier_cmd("notify", "-p", message, "-t", title)
     return bool(result and result.get("ok"))
 
 
