@@ -385,6 +385,29 @@ async def stop_session(session_id: str) -> bool:
     return result.get("success", False)
 
 
+def _infer_flavor_from_pid(pid: int) -> str:
+    """Infer agent flavor from process command line.
+
+    The relay/daemon APIs don't expose flavor, but the daemon spawns
+    processes as `happier <flavor> --happy-starting-mode remote ...`
+    so we can read it from `ps`.
+    """
+    try:
+        result = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "args="],
+            capture_output=True, text=True, timeout=2,
+        )
+        if result.returncode != 0:
+            return ""
+        args = result.stdout.strip()
+        for flavor in AGENT_FLAVORS:
+            if flavor != "claude" and f" {flavor} " in f" {args} ":
+                return flavor
+        return "claude" if args else ""
+    except (subprocess.TimeoutExpired, OSError):
+        return ""
+
+
 async def merge_local_into_relay(
     relay_sessions: list[Session],
     local_children: list[dict],
@@ -412,6 +435,10 @@ async def merge_local_into_relay(
                 session.local_alive = False
             except PermissionError:
                 session.local_alive = True
+            # Infer flavor from process command line (API doesn't expose it)
+            flavor = _infer_flavor_from_pid(pid)
+            if flavor:
+                session.flavor = flavor
 
 
 def is_daemon_running() -> bool:

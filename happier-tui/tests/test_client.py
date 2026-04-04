@@ -14,6 +14,7 @@ from happier_tui.client import (
     COMMON_MODELS,
     PERMISSION_MODES,
     Session,
+    _infer_flavor_from_pid,
     _summarize_tool_use,
     archive_session,
     can_resume_locally,
@@ -382,3 +383,47 @@ async def test_send_notification_default_title():
         result = await send_notification("Hello")
         assert result is True
         mock.assert_called_once_with("notify", "-p", "Hello", "-t", "Happier")
+
+
+# ---------------------------------------------------------------------------
+# _infer_flavor_from_pid
+# ---------------------------------------------------------------------------
+
+
+def test_infer_flavor_codex():
+    with patch("happier_tui.client.subprocess.run") as mock_run:
+        mock_run.return_value = type("R", (), {
+            "returncode": 0,
+            "stdout": "/usr/bin/node happier codex --happy-starting-mode remote --started-by daemon",
+        })()
+        assert _infer_flavor_from_pid(12345) == "codex"
+
+
+def test_infer_flavor_gemini():
+    with patch("happier_tui.client.subprocess.run") as mock_run:
+        mock_run.return_value = type("R", (), {
+            "returncode": 0,
+            "stdout": "/usr/bin/node happier gemini --happy-starting-mode remote",
+        })()
+        assert _infer_flavor_from_pid(12345) == "gemini"
+
+
+def test_infer_flavor_claude_default():
+    with patch("happier_tui.client.subprocess.run") as mock_run:
+        mock_run.return_value = type("R", (), {
+            "returncode": 0,
+            "stdout": "/usr/bin/node happier claude --happy-starting-mode remote",
+        })()
+        assert _infer_flavor_from_pid(12345) == "claude"
+
+
+def test_infer_flavor_process_gone():
+    with patch("happier_tui.client.subprocess.run") as mock_run:
+        mock_run.return_value = type("R", (), {"returncode": 1, "stdout": ""})()
+        assert _infer_flavor_from_pid(99999) == ""
+
+
+def test_infer_flavor_timeout():
+    import subprocess as sp
+    with patch("happier_tui.client.subprocess.run", side_effect=sp.TimeoutExpired("ps", 2)):
+        assert _infer_flavor_from_pid(12345) == ""
