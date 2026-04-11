@@ -79,10 +79,6 @@ happier resume                    # interactive session picker
 happier resume <session-id>       # resume specific session
 ```
 
-### What's still missing
-
-The relay API has the primitives (`session run stream-start`, `stream-read`, `stream-cancel`) but there's no terminal-native way to attach to a remote session. The Happier iOS and web apps can do it, but from a laptop terminal you can't yet "pick up" a session that's running on your server without going through the phone/web UI. This is why we're building a [lightweight TUI](happier-tui/) to bridge that gap.
-
 ## The bind mount
 
 My ThinkPad was set up as a personal computer, not a server. The root partition (`/`) is only 25GB while `/home` has 192GB. Be careful mounting things to root - you'll run out of space.
@@ -168,7 +164,12 @@ echo "/home/${USER}_macpath /Users/${MACOS_USER} none bind 0 0" | sudo tee -a /e
 # Install Claude Code via nvm (not system node)
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
 nvm install 22
-npm install -g @anthropic-ai/claude-code happy-coder
+npm install -g @anthropic-ai/claude-code
+
+# Install Happier CLI
+curl -fsSL https://happier.dev/install | bash
+happier auth login
+happier daemon install
 ```
 
 ### Client (macOS)
