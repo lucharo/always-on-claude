@@ -167,6 +167,8 @@ nvm install 22
 npm install -g @anthropic-ai/claude-code
 
 # Install Happier CLI
+# Note: the prebuilt binary needs AVX2. If your server is pre-2013 / Sandy Bridge
+# or older, see happier-setup.md for a build-from-source path.
 curl -fsSL https://happier.dev/install | bash
 happier auth login
 happier daemon install
