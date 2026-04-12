@@ -3,6 +3,7 @@
   "version": "3.0.0",
   "description": "Guide and tools for setting up an always-on Claude Code server with bidirectional sync",
   "skills": [
-    "skills/always-on-setup"
+    "skills/always-on-setup",
+    "skills/happier-upgrade"
   ]
 }
