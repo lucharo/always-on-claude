@@ -63,8 +63,22 @@ The Mac installer changed locations between versions (it used to ship through np
 # Stop the daemon
 happier daemon stop
 
-# Run the installer
-curl -fsSL https://happier.dev/install | bash
+# Run the installer. Default channel is `stable`, which on Happier is
+# actually a slower-moving preview-tagged release. For closer parity
+# with arch's source build (which tracks the `preview` branch tip),
+# install the preview channel instead:
+curl -fsSL https://happier.dev/install | HAPPIER_CHANNEL=preview bash
+# NOTE: the env var must come AFTER the pipe (applied to bash),
+# not before curl — otherwise it scopes to curl only.
+
+# The preview channel installs side-by-side with stable at
+# ~/.happier/cli-preview/ with a shim at ~/.local/bin/hprev.
+# To make `happier` resolve to the preview binary, repoint the shim:
+rip ~/.happier/cli ~/.happier/bin/happier ~/.local/bin/happier
+ln -sf ~/.happier/cli-preview/current/happier ~/.happier/bin/happier
+ln -sf ~/.happier/bin/happier ~/.local/bin/happier
+rip ~/.local/bin/hprev ~/.happier/bin/hprev
+hash -r
 
 # Check PATH — if an old nvm/npm happier shadows the new one, remove it
 which happier
