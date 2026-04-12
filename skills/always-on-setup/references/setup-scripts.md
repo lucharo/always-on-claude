@@ -159,15 +159,19 @@ mutagen sync create \
 # Note: Add project-specific ignores for server-only dirs with large logs/data
 # (e.g., pihole, jellyfin) that don't need to sync to your laptop
 
-echo "=== 7. Create Claude Config Sync ==="
-mutagen sync create \
-  --name=claude-config \
-  --mode=two-way-safe \
-  --ignore="CLAUDE.md" \
-  ~/.claude ${SERVER_HOST}:/home/${SERVER_USER}/.claude
-
-echo "=== 8. Verify Syncs ==="
+echo "=== 7. Verify Syncs ==="
 mutagen sync list
+
+echo "=== 8. Install Happier CLI ==="
+curl -fsSL https://happier.dev/install | bash
+
+echo "=== 9. Authenticate Happier ==="
+echo "Scan the QR code with the Happier mobile app (same account as server)"
+happier auth login
+
+echo "=== 10. Install Happier Daemon ==="
+happier daemon install
+happier daemon status
 
 echo "=== Done! ==="
 ```

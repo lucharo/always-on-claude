@@ -6,13 +6,7 @@
 
 ![Architecture diagram showing MacBook, Home Server, and Phone connected via Tailscale VPN, with Happier managing sessions through an E2E encrypted cloud relay](assets/architecture.png)
 
-Sync your code between machines so you can start Claude sessions from anywhere - your laptop, a home server, or your phone.
-
-> **⚠️ Sessions don't sync - only code does.**
->
-> I originally wanted to continue conversations across machines. It doesn't work reliably. Claude Code writes to conversation files continuously, causing race conditions with bidirectional sync. After much debugging ([issue #1](../../issues/1)), I've accepted that **sessions are local to each machine**.
->
-> What you get: Start a session on your phone, your code changes sync, continue working on your laptop with a *new* session that sees all your code. Not seamless, but practical.
+Sync your code and conversations between machines. Start Claude sessions from anywhere - your laptop, a home server, or your phone.
 
 ## Overview
 
@@ -42,29 +36,48 @@ flowchart TB
         Server["🖥️ Server<br/>/Users/.../Projects"]
         Phone["📱 Phone<br/>Happier App"]
 
-        MacBook <-->|"Mutagen sync<br/>(code only)"| Server
-        Phone -->|"starts sessions"| Server
+        MacBook <-->|"Mutagen sync<br/>(code)"| Server
     end
+
+    Relay["☁️ Happier Relay<br/>(E2E encrypted)"]
+
+    MacBook <-->|"sessions"| Relay
+    Server <-->|"sessions"| Relay
+    Phone <-->|"sessions"| Relay
 ```
 
 ## How it works
 
 1. **Tailscale** creates a secure mesh network between devices
-2. **Mutagen** syncs `~/Projects` bidirectionally (code, not conversations)
+2. **Mutagen** syncs `~/Projects` bidirectionally (code files)
 3. **Bind mount** on Linux makes paths identical across machines
-4. **Happier CLI** lets you start AI coding sessions from your phone
+4. **Happier CLI** manages sessions from any device — daemon on both machines + cloud relay keeps conversations in sync
 
-## ~~Session portability~~ What actually works
+## Cross-device sessions
 
-~~I hoped to continue conversations across machines.~~ Here's the reality:
+### Why the relay matters
 
-| Scenario | Works? | Notes |
-|----------|--------|-------|
-| Start on phone, continue on laptop | ❌ | Code syncs, but start a new session |
-| Start on laptop, continue on server | ❌ | Same - new session, same code |
-| Work on phone, see changes on laptop | ✅ | Code syncs fine |
+In v1/v2, conversations lived as `.jsonl` files on whichever machine ran the session. To continue a conversation on another device, you had to physically transfer those files (via Mutagen sync or manual SCP). This was fragile — race conditions, stale state, merge conflicts.
 
-**The shared context is your code, not your conversation history.** Each machine has its own `~/.claude` with separate sessions. When you switch machines, start fresh - Claude will see all your code changes.
+Happier's relay changes this fundamentally. The relay server maintains conversation state in a Postgres database, and devices communicate via a socket.io protocol with E2E encryption. When you start a session on your server, the relay holds the running state. Any authenticated device can connect to that session through the relay — your phone, your laptop, another server — without needing the `.jsonl` files locally. The conversation history lives in the relay, not on disk.
+
+This is the key insight that made v3 possible: **we don't need to sync conversation files between machines anymore.** Mutagen handles code, the relay handles conversations. Each tool does one job.
+
+### What works today
+
+With Happier daemon running on both your server and MacBook, conversations sync through the relay server:
+
+| Scenario | Works? |
+|----------|--------|
+| Start on phone, continue on laptop | ✅ (via Happier app/web) |
+| Start on laptop, continue on server | ✅ (via relay) |
+| See all sessions from any device | ✅ |
+
+```bash
+happier session list              # see all sessions from any device
+happier resume                    # interactive session picker
+happier resume <session-id>       # resume specific session
+```
 
 ## The bind mount
 
@@ -122,11 +135,11 @@ Moving directories while sync runs will break things.
 
 ## What syncs
 
-| Path | Synced | Notes |
-|------|--------|-------|
-| ~/Projects | ✅ Yes | Excludes node_modules, .venv, build artifacts |
-| ~/.claude | ❌ No | Sessions are local to each machine |
-| ~/.claude/CLAUDE.md | ❌ No | Machine-specific anyway |
+| What | Synced | How |
+|------|--------|-----|
+| ~/Projects | ✅ | Mutagen (excludes node_modules, .venv, build artifacts) |
+| Conversations | ✅ | Happier relay (E2E encrypted, accessible from any device) |
+| ~/.claude/CLAUDE.md | ❌ | Machine-specific config, intentionally separate |
 
 See [`examples/CLAUDE.md.example`](examples/CLAUDE.md.example) for a sample server CLAUDE.md with machine context, sync safety rules, and workflow reminders.
 
@@ -151,7 +164,12 @@ echo "/home/${USER}_macpath /Users/${MACOS_USER} none bind 0 0" | sudo tee -a /e
 # Install Claude Code via nvm (not system node)
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
 nvm install 22
-npm install -g @anthropic-ai/claude-code happy-coder
+npm install -g @anthropic-ai/claude-code
+
+# Install Happier CLI
+curl -fsSL https://happier.dev/install | bash
+happier auth login
+happier daemon install
 ```
 
 ### Client (macOS)
@@ -170,6 +188,19 @@ mutagen sync create --name=projects --mode=two-way-safe \
   --ignore="node_modules" --ignore=".venv" --ignore="dist" \
   --ignore="build" --ignore=".next" --ignore=".cache" \
   ~/Projects arch-lenovo:/Users/$USER/Projects
+```
+
+### Happier CLI (on MacBook)
+
+```bash
+# Install Happier
+curl -fsSL https://happier.dev/install | bash
+
+# Authenticate (same account as server)
+happier auth login
+
+# Install daemon (enables cross-device session sync)
+happier daemon install
 ```
 
 ## Tailscale tips
@@ -224,21 +255,12 @@ This is convenient but means any process running as your user gets root access. 
 2. **Put /Users on root partition** - filled up 25GB fast, should've used /home
 3. **Used symlink instead of bind mount** - Happier showed wrong paths, sessions weren't portable
 4. **Forgot to clean old laptop** - 12GB movie, 3.5GB pacman cache ate disk space
-5. **Tried to sync conversations** - Race conditions, lost messages, gave up (see below)
 
-## Why session sync doesn't work
+## Evolution
 
-Claude Code writes to `.jsonl` conversation files continuously, especially with thinking mode. Bidirectional sync tools like Mutagen grab these files mid-write, causing:
-
-- Older versions overwriting newer ones
-- Missing messages when resuming
-- Divergent states between machines
-
-I tried hooks to pause sync during sessions ([see hooks/](hooks/)), but it breaks down with multiple concurrent sessions. The fundamental issue: continuous file writes + bidirectional sync = race conditions.
-
-**Accepted trade-off:** Sessions are local. Code syncs. Start fresh sessions when switching machines.
-
-See [issue #1](../../issues/1) for the full investigation.
+- **v1** (Happy CLI) — original setup, Happy is no longer maintained
+- **v2** (Happier CLI) — migrated to Happier fork, documented session sync as a limitation. We tried syncing `~/.claude` via Mutagen to share JSONL session files between machines — this caused race conditions and was the root of most sync bugs.
+- **v3** — realized Happier's relay server already solves session sync. Conversations are stored E2E encrypted in the relay's Postgres database and streamed via socket.io — no need to transfer JSONL files between machines. Removed the `~/.claude` Mutagen sync and the manual `conversation-transfer` skill. See [issue #1](../../issues/1) for the original investigation.
 
 ## Alternatives
 

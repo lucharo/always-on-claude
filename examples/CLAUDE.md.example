@@ -2,7 +2,7 @@
 
 This is a Lenovo ThinkPad running Arch Linux, configured as a persistent home
 server for Claude Code. It runs 24/7 with the lid closed, connected via WiFi
-and Tailscale. Access from MacBook via SSH or from phone via Happy CLI.
+and Tailscale. Access from MacBook via SSH or from phone via Happier CLI.
 
 ## System
 
@@ -14,8 +14,8 @@ and Tailscale. Access from MacBook via SSH or from phone via Happy CLI.
 ## Access Patterns
 
 - From MacBook: `ssh arch` (via Tailscale)
-- From phone: Happy app (sessions visible automatically)
-- Start session: `happy claude` in project directory
+- From phone: Happier app (sessions visible automatically)
+- Start session: `happier claude` in project directory
 - Dev servers accessible at http://arch:PORT via Tailscale
 - Tailscale IP: 100.75.96.28 (fallback if hostname doesn't resolve)
 
@@ -44,7 +44,7 @@ git worktree remove ../project-feature  # Remove when done
 ```
 
 **Why worktrees matter:**
-- Happy CLI doesn't yet have built-in worktree support
+- Happier CLI doesn't yet have built-in worktree support
 - Prevents accidental commits to main
 - Keeps feature work isolated
 - Can have multiple features in progress simultaneously
@@ -121,7 +121,7 @@ modal run script.py  # Provisions cloud GPU on demand
 ```bash
 sudo pacman -Syu                            # Update system
 npm update -g @anthropic-ai/claude-code     # Update Claude Code
-npm update -g happy-coder                   # Update Happy
+happier self-update                         # Update Happier
 ```
 
 ## Things to Watch Out For

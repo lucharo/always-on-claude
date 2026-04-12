@@ -1,9 +1,9 @@
 {
   "name": "always-on-claude",
-  "version": "1.1.0",
+  "version": "3.0.0",
   "description": "Guide and tools for setting up an always-on Claude Code server with bidirectional sync",
   "author": {
     "name": "Luis"
   },
-  "keywords": ["server", "sync", "tailscale", "always-on", "conversation-transfer"]
+  "keywords": ["server", "sync", "tailscale", "always-on", "happier"]
 }
