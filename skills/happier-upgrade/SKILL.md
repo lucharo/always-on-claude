@@ -74,10 +74,11 @@ curl -fsSL https://happier.dev/install | HAPPIER_CHANNEL=preview bash
 # The preview channel installs side-by-side with stable at
 # ~/.happier/cli-preview/ with a shim at ~/.local/bin/hprev.
 # To make `happier` resolve to the preview binary, repoint the shim:
-rip ~/.happier/cli ~/.happier/bin/happier ~/.local/bin/happier
+rm -rf ~/.happier/cli
+rm -f ~/.happier/bin/happier ~/.local/bin/happier
 ln -sf ~/.happier/cli-preview/current/happier ~/.happier/bin/happier
 ln -sf ~/.happier/bin/happier ~/.local/bin/happier
-rip ~/.local/bin/hprev ~/.happier/bin/hprev
+rm -f ~/.local/bin/hprev ~/.happier/bin/hprev
 hash -r
 
 # Check PATH — if an old nvm/npm happier shadows the new one, remove it
@@ -87,7 +88,8 @@ happier --version
 # If the old nvm install is still winning:
 ls ~/.nvm/versions/node/*/lib/node_modules/@happier-dev/ 2>/dev/null
 # If found, delete the stale install:
-rip ~/.nvm/versions/node/<node-version>/lib/node_modules/@happier-dev ~/.nvm/versions/node/<node-version>/bin/happier
+rm -rf ~/.nvm/versions/node/<node-version>/lib/node_modules/@happier-dev
+rm -f ~/.nvm/versions/node/<node-version>/bin/happier
 hash -r
 which happier  # should now be ~/.local/bin/happier
 
@@ -105,9 +107,22 @@ ssh arch-lenovo '
 set -e
 cd ~/Projects/oss/happier-dev
 
-# Stash any local build drift (yarn.lock, etc.)
+# Inspect the checkout before touching it.
 git status --short
-git stash push yarn.lock -m "pre-upgrade drift" 2>/dev/null || true
+
+# Stash *all* tracked changes (build drift, config tweaks, whatever).
+# If the stash actually saves something, the pull is guaranteed to not
+# collide with local edits. If there is nothing to stash, git prints
+# "No local changes to save" and exits 0 — that is fine.
+git stash push -m "pre-upgrade drift" || true
+
+# Untracked files are a separate concern: a plain `git pull` never
+# touches them, but if they shadow tracked paths the merge will fail
+# loudly. Fail fast here rather than pushing broken state forward:
+if [ -n "$(git ls-files --others --exclude-standard)" ]; then
+  echo "ERROR: untracked files in happier-dev. Clean them up or move them aside before pulling." >&2
+  exit 1
+fi
 
 # Pull latest preview
 git pull origin preview
