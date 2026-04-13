@@ -555,7 +555,12 @@ class HappierTUI(App):
             return
 
         if is_local_host(session.host):
+            ok, reason = can_resume_locally(session)
+            if not ok:
+                self.notify(f"Cannot resume: {reason}", severity="error")
+                return
             cwd = session.path or os.path.expanduser("~")
+            cwd = normalize_path_for_local(cwd)
             self.exit(result=("resume-yolo", session.relay_id, cwd, session.flavor))
         else:
             from happier_tui.chat_screen import ChatScreen
