@@ -317,6 +317,37 @@ def test_can_sync_resume_blocks_codex():
     assert "codex" in reason
 
 
+def test_can_resume_locally_blocks_codex_without_vendor_eligibility():
+    s = Session(
+        relay_id="s1", host="macbookpro", path="/tmp", flavor="codex",
+        vendor_resume_eligible=False,
+        vendor_resume_reason="experimental_disabled",
+    )
+    ok, reason = can_resume_locally(s)
+    assert not ok
+    assert "codex" in reason and "experimental_disabled" in reason
+
+
+def test_can_resume_locally_allows_codex_when_eligible():
+    s = Session(
+        relay_id="s1", host="macbookpro", path="/tmp", flavor="codex",
+        vendor_resume_eligible=True,
+    )
+    ok, _ = can_resume_locally(s)
+    assert ok
+
+
+def test_can_resume_locally_claude_ignores_vendor_flag():
+    """Claude resume uses local JSONL, not vendor resume — flag irrelevant."""
+    s = Session(
+        relay_id="s1", host="macbookpro", path="/tmp", flavor="claude",
+        vendor_resume_eligible=False,
+        vendor_resume_reason="vendor_resume_id_missing",
+    )
+    ok, _ = can_resume_locally(s)
+    assert ok
+
+
 def test_session_new_fields_populated():
     s = Session(
         relay_id="abc123",

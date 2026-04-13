@@ -535,6 +535,11 @@ def can_resume_locally(session: Session) -> tuple[bool, str]:
     if not shutil.which(agent) and not shutil.which("happier"):
         return False, f"'{agent}' not installed locally"
 
+    # Non-Claude flavors depend on vendor resume — honor relay's verdict
+    if session.flavor and session.flavor != "claude" and not session.vendor_resume_eligible:
+        reason = session.vendor_resume_reason or "vendor resume unavailable"
+        return False, f"{session.flavor} resume blocked: {reason}"
+
     # Check directory exists
     if session.path:
         # Normalize path for this machine
