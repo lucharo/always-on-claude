@@ -356,7 +356,6 @@ If sync is hopelessly broken:
 ```bash
 # On client
 mutagen sync terminate projects
-mutagen sync terminate claude-config
 
 # On server - delete synced data (if client has good copy)
 ssh server 'rm -rf /path/to/Projects/*'

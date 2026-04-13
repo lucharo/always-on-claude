@@ -1,6 +1,6 @@
-# Happier Setup (Arch Server)
+# Happier Setup
 
-Reference for the Happier installation on `arch`, using Happier Cloud relay.
+Reference for Happier installation on both server and client, using Happier Cloud relay for cross-device session sync.
 
 ## Prerequisites
 
@@ -60,6 +60,22 @@ happier daemon install
 happier auth status
 happier daemon status
 ```
+
+## MacBook Setup
+
+On the MacBook, the standard install works (no AVX2 issues):
+
+```bash
+curl -fsSL https://happier.dev/install | bash
+happier auth login    # same account as server
+happier daemon install
+```
+
+With Happier on both machines, all sessions are accessible from either device through the relay server. Use `happier session list` to see sessions or `happier resume` to continue one.
+
+## Self-hosted relay (optional)
+
+Happier supports running your own relay server via `hstack` — useful if you want conversations to never touch the Happier Cloud infrastructure. This setup doesn't use it: we run the default hosted relay at `https://api.happier.dev` because it's E2E encrypted and operationally simpler. If you want to self-host instead, see the [Happier stack docs](https://github.com/happier-dev/happier) and configure a second daemon with `HAPPIER_SERVER_URL=https://your-relay.example`.
 
 ## Other AI CLIs
 

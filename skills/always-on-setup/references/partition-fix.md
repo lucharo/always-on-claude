@@ -15,7 +15,6 @@ When data lands on the wrong partition (e.g., root instead of /home), follow thi
 From the client machine:
 ```bash
 mutagen sync pause projects
-mutagen sync pause claude-config
 mutagen sync list  # Verify paused
 ```
 
@@ -79,7 +78,6 @@ df -h /  # Should show freed space
 From the client machine:
 ```bash
 mutagen sync resume projects
-mutagen sync resume claude-config
 mutagen sync list  # Verify working
 ```
 

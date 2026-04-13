@@ -1,6 +1,6 @@
 ---
 name: always-on-setup
-description: This skill should be used when the user asks to "set up an always-on Claude server", "configure a home server for Claude Code", "sync Claude sessions between machines", "access Claude from my phone", "set up Happier CLI with Tailscale", or mentions "always-on Claude setup", "remote Claude via Tailscale", "bidirectional Claude sync", or "Happier daemon configuration". Provides guidance for multi-machine Claude Code setups within a secure Tailscale network.
+description: This skill should be used when the user asks to "set up an always-on Claude server", "configure a home server for Claude Code", "access Claude sessions from any device via Happier relay", "access Claude from my phone", "set up Happier CLI with Tailscale", or mentions "always-on Claude setup", "remote Claude via Tailscale", "bidirectional Claude sync", or "Happier daemon configuration". Provides guidance for multi-machine Claude Code setups within a secure Tailscale network.
 ---
 
 # Always-On Claude Setup
@@ -16,7 +16,7 @@ Configure a secondary machine (server) within a Tailscale network for remote Cla
 | Component | Purpose | Required? |
 |-----------|---------|-----------|
 | **Tailscale** | Secure mesh network connecting all devices | Yes |
-| **Mutagen** | Bidirectional file sync (Projects + Claude config) | Yes |
+| **Mutagen** | Bidirectional file sync (code only) | Yes |
 | **Symlinks** | Path compatibility for Claude session portability | Yes |
 | **Happier CLI** | Phone/mobile session management, multi-backend support | Yes |
 
@@ -24,7 +24,7 @@ Configure a secondary machine (server) within a Tailscale network for remote Cla
 
 **Tailscale:** Creates a secure, private network between your laptop, server, and phone. All other tools communicate through this network.
 
-**Mutagen:** Syncs `~/Projects` and `~/.claude` bidirectionally between machines. Without this, code changes and Claude conversations stay isolated on one machine.
+**Mutagen:** Syncs `~/Projects` bidirectionally between machines. Conversations sync separately through Happier's relay server.
 
 **Symlinks:** Claude Code stores sessions keyed by path (e.g., `-Users-luischavesrodriguez-Projects-foo`). Both machines must resolve `~/Projects` to `/Users/luischavesrodriguez/Projects` for sessions to be portable.
 
@@ -39,9 +39,9 @@ Configure a secondary machine (server) within a Tailscale network for remote Cla
 | # | Requirement | Solution | Status |
 |---|-------------|----------|--------|
 | 1 | Start Claude session from phone in any project folder | Happier daemon on server (`happier` in project dir) | **Working** |
-| 2 | Resume conversation on laptop that was started on server | Bind mount makes paths identical (`/Users/luischavesrodriguez/...` on both machines) | **Working** |
-| 3 | Continue conversation from server that started on laptop | Same bind mount solution - paths match so session keys match | **Working** |
-| 4 | Continue conversation from phone that started on laptop | Happier supports listing/resuming sessions started by any method | **Working** |
+| 2 | Resume conversation on laptop that was started on server | Happier relay syncs sessions across devices (bind mount ensures path compatibility) | **Working** |
+| 3 | Continue conversation from server that started on laptop | Happier relay syncs sessions across devices (bind mount ensures path compatibility) | **Working** |
+| 4 | Continue conversation from phone that started on laptop | Happier relay — all sessions accessible from any authenticated device | **Working** |
 
 ### Notes on Happier CLI
 
@@ -78,10 +78,8 @@ NEVER move directories while Mutagen sync is running:
 
 ```bash
 mutagen sync pause projects
-mutagen sync pause claude-config
 # Make changes
 mutagen sync resume projects
-mutagen sync resume claude-config
 ```
 
 ### Transfer Before Sync
@@ -167,6 +165,14 @@ mutagen sync terminate projects
 2. Check server is on: `ping arch-lenovo`
 3. Check SSH: `ssh arch-lenovo 'echo ok'`
 
+### MagicDNS Broken on macOS
+
+If `tailscale ping arch` works but `curl http://arch:3001/` fails with `Could not resolve host`, the Tailscale network is up and the problem is local macOS DNS integration.
+
+For macOS laptops, prefer the standalone Tailscale app when you want reliable MagicDNS and hostname-based access. It still provides a usable `tailscale` CLI on the machine.
+
+Keep the open-source `tailscale + tailscaled` variant only if that Mac must act as a **Tailscale SSH server**. After switching variants, sign in again and remove the stale old device entry once the new node is online.
+
 ### Tailscale File Sharing
 
 Send files to any device on your tailnet (including phones with Tailscale installed):
@@ -235,14 +241,4 @@ mutagen sync create \
   --ignore=".env" \
   --ignore=".env.local" \
   ~/Projects server:/Users/luischavesrodriguez/Projects
-```
-
-Claude config sync (exclude machine-specific CLAUDE.md):
-
-```bash
-mutagen sync create \
-  --name=claude-config \
-  --mode=two-way-safe \
-  --ignore="CLAUDE.md" \
-  ~/.claude server:/home/user/.claude
 ```
