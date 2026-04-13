@@ -43,11 +43,13 @@ class Session:
     local_alive: bool = False
     claude_session_id: str | None = None
     started_by: str | None = None
-    flavor: str = ""  # empty = unknown (relay API doesn't expose flavor)
+    flavor: str = ""  # from relay agentId (0.2.2+); empty only if API omits it
     # New fields from updated API
     active_at: int = 0  # epoch ms — last activity (distinct from updated_at)
     permission_mode: str = ""  # e.g. "default", "bypassPermissions"
     model_id: str = ""  # e.g. "claude-opus-4-6"
+    vendor_resume_eligible: bool = False  # relay says native vendor resume is possible
+    vendor_resume_reason: str = ""  # reason code when not eligible
 
 
 def get_local_hostname() -> str:
@@ -113,6 +115,9 @@ async def relay_list_sessions(include_archived: bool = False) -> list[Session]:
             active_at=s.get("activeAt", 0),
             permission_mode=s.get("permissionMode", ""),
             model_id=s.get("modelId", ""),
+            flavor=s.get("agentId", ""),
+            vendor_resume_eligible=s.get("vendorResumeEligible", False),
+            vendor_resume_reason=s.get("vendorResumeReasonCode", ""),
         ))
 
     return sessions
@@ -435,10 +440,11 @@ async def merge_local_into_relay(
                 session.local_alive = False
             except PermissionError:
                 session.local_alive = True
-            # Infer flavor from process command line (API doesn't expose it)
-            flavor = _infer_flavor_from_pid(pid)
-            if flavor:
-                session.flavor = flavor
+            # Fallback: if relay didn't return agentId, infer from process cmdline
+            if not session.flavor:
+                flavor = _infer_flavor_from_pid(pid)
+                if flavor:
+                    session.flavor = flavor
 
 
 def is_daemon_running() -> bool:
@@ -504,13 +510,12 @@ def relative_time(epoch_ms: int) -> str:
 def can_sync_resume(session: Session) -> tuple[bool, str]:
     """Check if a remote session can be synced and resumed locally.
 
-    Sync writes Claude-format JSONL, so only Claude (or unknown-flavor)
-    sessions are eligible. The relay API doesn't expose flavor for remote
-    sessions, so unknown flavor is assumed Claude-compatible.
+    Sync writes Claude-format JSONL, so only Claude sessions are eligible.
+    Relay 0.2.2+ exposes agentId for all sessions, so flavor is authoritative.
 
     Returns (eligible, reason_if_not).
     """
-    if session.flavor and session.flavor not in ("claude", ""):
+    if session.flavor and session.flavor != "claude":
         return False, f"sync not supported for {session.flavor}"
     ok, reason = can_resume_locally(session)
     if not ok:

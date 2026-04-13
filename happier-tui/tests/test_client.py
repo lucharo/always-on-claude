@@ -273,6 +273,48 @@ def test_session_new_fields_defaults():
     assert s.active_at == 0
     assert s.permission_mode == ""
     assert s.model_id == ""
+    assert s.vendor_resume_eligible is False
+    assert s.vendor_resume_reason == ""
+
+
+@pytest.mark.asyncio
+async def test_relay_list_parses_agent_id_and_vendor_resume():
+    """Relay 0.2.2+ returns agentId + vendorResumeEligible for all sessions."""
+    from happier_tui.client import relay_list_sessions
+    payload = {
+        "ok": True,
+        "data": {
+            "sessions": [
+                {
+                    "id": "s1", "host": "arch", "path": "/tmp",
+                    "agentId": "codex",
+                    "vendorResumeEligible": False,
+                    "vendorResumeReasonCode": "experimental_disabled",
+                },
+                {
+                    "id": "s2", "host": "arch", "path": "/tmp",
+                    "agentId": "claude",
+                    "vendorResumeEligible": True,
+                },
+            ]
+        },
+    }
+    with patch(_CMD_PATH, new_callable=AsyncMock, return_value=payload):
+        sessions = await relay_list_sessions()
+    assert len(sessions) == 2
+    assert sessions[0].flavor == "codex"
+    assert sessions[0].vendor_resume_eligible is False
+    assert sessions[0].vendor_resume_reason == "experimental_disabled"
+    assert sessions[1].flavor == "claude"
+    assert sessions[1].vendor_resume_eligible is True
+
+
+def test_can_sync_resume_blocks_codex():
+    from happier_tui.client import can_sync_resume
+    s = Session(relay_id="s1", host="arch", path="/tmp", flavor="codex")
+    ok, reason = can_sync_resume(s)
+    assert not ok
+    assert "codex" in reason
 
 
 def test_session_new_fields_populated():
