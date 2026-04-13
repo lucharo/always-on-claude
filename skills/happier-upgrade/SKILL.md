@@ -113,8 +113,10 @@ git status --short
 # Stash *all* tracked changes (build drift, config tweaks, whatever).
 # If the stash actually saves something, the pull is guaranteed to not
 # collide with local edits. If there is nothing to stash, git prints
-# "No local changes to save" and exits 0 — that is fine.
-git stash push -m "pre-upgrade drift" || true
+# "No local changes to save" and exits 0 — that is fine. Do NOT wrap
+# this in `|| true`: a real failure here (unresolved index, stash
+# conflict, etc.) means we MUST stop before pulling.
+git stash push -m "pre-upgrade drift"
 
 # Untracked files are a separate concern: a plain `git pull` never
 # touches them, but if they shadow tracked paths the merge will fail
