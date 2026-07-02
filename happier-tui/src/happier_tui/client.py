@@ -515,7 +515,9 @@ def can_sync_resume(session: Session) -> tuple[bool, str]:
 
     Returns (eligible, reason_if_not).
     """
-    if session.flavor and session.flavor != "claude":
+    if session.flavor != "claude":
+        if not session.flavor:
+            return False, "sync requires a Claude session (relay omitted agentId)"
         return False, f"sync not supported for {session.flavor}"
     ok, reason = can_resume_locally(session)
     if not ok:
@@ -535,8 +537,12 @@ def can_resume_locally(session: Session) -> tuple[bool, str]:
     if not shutil.which(agent) and not shutil.which("happier"):
         return False, f"'{agent}' not installed locally"
 
-    # Non-Claude flavors depend on vendor resume — honor relay's verdict
-    if session.flavor and session.flavor != "claude" and not session.vendor_resume_eligible:
+    # Non-Claude flavors depend on vendor resume — honor relay's verdict.
+    # Only an explicit Claude flavor is exempt: relay 0.2.2+ always sends
+    # agentId, so a missing flavor cannot be assumed Claude-compatible.
+    if session.flavor != "claude" and not session.vendor_resume_eligible:
+        if not session.flavor:
+            return False, "resume blocked: unknown agent flavor (relay omitted agentId)"
         reason = session.vendor_resume_reason or "vendor resume unavailable"
         return False, f"{session.flavor} resume blocked: {reason}"
 

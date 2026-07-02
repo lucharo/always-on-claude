@@ -201,14 +201,14 @@ def test_parse_reverses_order():
 
 
 def test_can_resume_nonexistent_path():
-    s = Session(relay_id="test", path="/nonexistent/xyz/abc", host="remote")
+    s = Session(relay_id="test", path="/nonexistent/xyz/abc", host="remote", flavor="claude")
     ok, reason = can_resume_locally(s)
     assert not ok
     assert "not found" in reason.lower()
 
 
 def test_can_resume_no_path():
-    s = Session(relay_id="test", path=None, host="remote")
+    s = Session(relay_id="test", path=None, host="remote", flavor="claude")
     ok, reason = can_resume_locally(s)
     assert ok  # no path to check, passes
 
@@ -315,6 +315,36 @@ def test_can_sync_resume_blocks_codex():
     ok, reason = can_sync_resume(s)
     assert not ok
     assert "codex" in reason
+
+
+def test_can_sync_resume_blocks_missing_flavor():
+    """Relay omitted agentId — session cannot be assumed Claude, sync is blocked."""
+    from happier_tui.client import can_sync_resume
+    s = Session(relay_id="s1", host="arch", path="/tmp", flavor="")
+    ok, reason = can_sync_resume(s)
+    assert not ok
+    assert "agentId" in reason
+
+
+def test_can_resume_locally_blocks_missing_flavor_when_vendor_ineligible():
+    """vendorResumeEligible=false + missing agentId must not fall through as Claude."""
+    s = Session(
+        relay_id="s1", host="macbookpro", path="/tmp", flavor="",
+        vendor_resume_eligible=False,
+    )
+    ok, reason = can_resume_locally(s)
+    assert not ok
+    assert "agentId" in reason
+
+
+def test_can_resume_locally_allows_missing_flavor_when_vendor_eligible():
+    """Relay says vendor resume works — missing flavor is not blocking."""
+    s = Session(
+        relay_id="s1", host="macbookpro", path="/tmp", flavor="",
+        vendor_resume_eligible=True,
+    )
+    ok, _ = can_resume_locally(s)
+    assert ok
 
 
 def test_can_resume_locally_blocks_codex_without_vendor_eligibility():
