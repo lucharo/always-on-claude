@@ -11,7 +11,8 @@ Sync your code and conversations between machines. Start Claude sessions from an
 ## Overview
 
 **Devices:**
-- MacBook (primary dev machine)
+- M1 MacBook (primary dev machine and sync hub)
+- Max (independent macOS execution workstation)
 - iPhone (for on-the-go access)
 - Server - I use an old Lenovo ThinkPad running Arch, but you could use a DigitalOcean Droplet, Hetzner VM, or whatever
 
@@ -32,16 +33,19 @@ flowchart TB
     subgraph Tailscale["🔒 Tailscale network"]
         direction LR
 
-        MacBook["💻 MacBook<br/>/Users/.../Projects"]
-        Server["🖥️ Server<br/>/Users/.../Projects"]
+        M1["💻 M1 sync hub<br/>/Users/luischavesrodriguez/Projects"]
+        Max["💻 Max execution peer<br/>/Users/luischavesrodriguez/Projects"]
+        Server["🖥️ Arch execution peer<br/>/Users/luischavesrodriguez/Projects"]
         Phone["📱 Phone<br/>Happier App"]
 
-        MacBook <-->|"Mutagen sync<br/>(code)"| Server
+        M1 <-->|"projects-max<br/>(Mutagen)"| Max
+        M1 <-->|"projects<br/>(Mutagen)"| Server
     end
 
     Relay["☁️ Happier Relay<br/>(E2E encrypted)"]
 
-    MacBook <-->|"sessions"| Relay
+    M1 <-->|"sessions"| Relay
+    Max <-->|"sessions"| Relay
     Server <-->|"sessions"| Relay
     Phone <-->|"sessions"| Relay
 ```
@@ -49,9 +53,17 @@ flowchart TB
 ## How it works
 
 1. **Tailscale** creates a secure mesh network between devices
-2. **Mutagen** syncs `~/Projects` bidirectionally (code files)
-3. **Bind mount** on Linux makes paths identical across machines
-4. **Happier CLI** manages sessions from any device — daemon on both machines + cloud relay keeps conversations in sync
+2. **M1** acts as the sync hub, with one Mutagen session per execution peer
+3. **Canonical paths** make projects resolve at `/Users/luischavesrodriguez/Projects` on every machine
+4. **A bind mount on Arch and a real directory on Max** provide that path without changing either machine's local home
+5. **Happier CLI** manages sessions from any device — daemons and the cloud relay keep conversations in sync
+
+Max and Arch never sync directly. Each session can be paused or repaired without
+changing the other peer.
+
+See [CONTEXT.md](CONTEXT.md) for the terminology and
+[ADR 0001](docs/adr/0001-m1-sync-hub-and-portable-workspaces.md) for the exact
+live session configuration.
 
 ## Cross-device sessions
 
@@ -65,7 +77,8 @@ This is the key insight that made v3 possible: **we don't need to sync conversat
 
 ### What works today
 
-With Happier daemon running on both your server and MacBook, conversations sync through the relay server:
+With Happier daemon running on each execution machine, conversations sync
+through the relay server:
 
 | Scenario | Works? |
 |----------|--------|
@@ -79,7 +92,21 @@ happier resume                    # interactive session picker
 happier resume <session-id>       # resume specific session
 ```
 
-## The bind mount
+## Portable paths
+
+The project path is portable; the user home is not.
+
+| Machine | Local home | Portable workspace | How |
+|---------|------------|--------------------|-----|
+| M1 | `/Users/luischavesrodriguez` | `/Users/luischavesrodriguez/Projects` | Real directory |
+| Max | `/Users/luis` | `/Users/luischavesrodriguez/Projects` | Real directory owned by `luis`; `/Users/luis/Projects` is a convenience symlink |
+| Arch | `/home/luischavesrodriguez` | `/Users/luischavesrodriguez/Projects` | Bind mount |
+
+Codex on both Macs uses
+`/Users/luischavesrodriguez/Projects/.worktrees/codex` as its worktree root.
+This keeps worktree paths stable without moving existing repositories into GHQ.
+
+### The Arch bind mount
 
 My ThinkPad was set up as a personal computer, not a server. The root partition (`/`) is only 25GB while `/home` has 192GB. Be careful mounting things to root - you'll run out of space.
 
@@ -109,7 +136,10 @@ flowchart TB
 
 ```bash
 # Check sync status
-mutagen sync list
+mutagen sync list --long
+
+# Force both independent peer sessions to settle
+mutagen sync flush projects projects-max
 
 # SSH to server
 ssh arch-lenovo          # local network
@@ -121,25 +151,32 @@ ssh arch-lenovo-ts       # via Tailscale
 
 ## Sync safety
 
-> **⚠️ Mutagen sync should be opt-in.** Bidirectional file syncing carries real risk of data loss on your primary machine. If Mutagen gets confused (conflicts, race conditions, interrupted transfers), it can delete or overwrite files on either side. The `two-way-safe` mode helps but isn't bulletproof. **Understand the risks before enabling sync, and always keep backups of important work.** If you're not comfortable with this, skip Mutagen and use `git push`/`pull` or manual `scp` instead.
+> **⚠️ Mutagen sync should be opt-in.** Bidirectional file syncing carries real risk of data loss on your primary machine. If Mutagen gets confused (conflicts, race conditions, interrupted transfers), it can delete or overwrite files on either side. The `two-way-safe` mode helps but isn't bulletproof. **Understand the risks before enabling sync, and always keep backups of important work.** If you're not comfortable with this, skip Mutagen and use `git push`/`pull` or a reviewed, non-destructive `rsync` instead.
 
-**Pause sync before changing paths:**
+**Pause only the affected session before changing paths:**
 
 ```bash
 mutagen sync pause projects
 # make changes
 mutagen sync resume projects
+mutagen sync flush projects
 ```
 
 Moving directories while sync runs will break things.
+
+The live sessions use `Ignore VCS`. Existing Git metadata was copied during
+Max's one-time seed, so the seeded repositories and worktrees are usable there.
+Later `.git` updates and new worktree registrations do not sync automatically;
+use Git remotes for commits and seed new worktree metadata deliberately.
 
 ## What syncs
 
 | What | Synced | How |
 |------|--------|-----|
-| ~/Projects | ✅ | Mutagen (excludes node_modules, .venv, build artifacts) |
+| Portable workspace | ✅ | Two independent Mutagen sessions from M1 |
+| Existing seeded Git/worktree metadata | One-time | Non-destructive rsync seed; ongoing VCS directories are ignored |
 | Conversations | ✅ | Happier relay (E2E encrypted, accessible from any device) |
-| ~/.claude/CLAUDE.md | ❌ | Machine-specific config, intentionally separate |
+| Local homes and credentials | ❌ | Machine-specific, intentionally separate |
 
 See [`examples/CLAUDE.md.example`](examples/CLAUDE.md.example) for a sample server CLAUDE.md with machine context, sync safety rules, and workflow reminders.
 
@@ -181,15 +218,28 @@ happier daemon install
 brew install mutagen-io/mutagen/mutagen
 mutagen daemon start
 
-# Initial transfer (do this BEFORE enabling sync)
-# ~/Projects is your MacBook path, server uses /Users/... (the bind mount)
-scp -r ~/Projects/* arch-lenovo:/Users/$USER/Projects/
+# Initial transfer (do this BEFORE enabling sync).
+# Start with the full live ignore list from ADR 0001. If Codex is active,
+# also exclude its volatile turn-diff refs before the first pass:
+printf '%s\n' '.git/refs/codex/turn-diffs' \
+  >> /tmp/projects-sync-excludes.txt
 
-# Create sync (code only - NOT conversations)
-mutagen sync create --name=projects --mode=two-way-safe \
-  --ignore="node_modules" --ignore=".venv" --ignore="dist" \
-  --ignore="build" --ignore=".next" --ignore=".cache" \
-  ~/Projects arch-lenovo:/Users/$USER/Projects
+# Keep the destination, omit --delete, and use the same exclusions as Mutagen.
+rsync -a --stats --exclude-from=/tmp/projects-sync-excludes.txt \
+  /Users/luischavesrodriguez/Projects/ \
+  luis@max:/Users/luischavesrodriguez/Projects/
+
+# Run it again and require exit 0 with zero files transferred.
+
+# Create a peer session pre-paused, using the full live ignore list from ADR 0001.
+mutagen sync create --name projects-max --paused \
+  --mode two-way-safe --symlink-mode portable \
+  --ignore-vcs --permissions-mode portable \
+  /Users/luischavesrodriguez/Projects \
+  luis@max:/Users/luischavesrodriguez/Projects
+
+mutagen sync resume projects projects-max
+mutagen sync flush projects projects-max
 ```
 
 ### Happier CLI (on MacBook)
@@ -243,7 +293,9 @@ This is convenient but means any process running as your user gets root access. 
 
 ## Troubleshooting
 
-**Sync stuck:** `mutagen sync terminate projects` then recreate
+**Sync stuck:** Pause the affected session, inspect `mutagen sync list --long`,
+fix the endpoint or conflict conservatively, then resume and flush. Terminate
+and recreate only when repair is not possible.
 
 **Conflicts:** `mutagen sync list` shows them - pick a side and delete the other
 
@@ -257,6 +309,7 @@ This is convenient but means any process running as your user gets root access. 
 2. **Put /Users on root partition** - filled up 25GB fast, should've used /home
 3. **Used symlink instead of bind mount** - Happier showed wrong paths, sessions weren't portable
 4. **Forgot to clean old laptop** - 12GB movie, 3.5GB pacman cache ate disk space
+5. **Treated every machine as a peer** - a hub with independent sessions is easier to reason about and repair
 
 ## Evolution
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- M1 hub topology for the independent Max and Arch execution peers
+- Canonical portable workspace and Codex worktree paths
+- Live `projects-max` Mutagen configuration and tested seed procedure in ADR 0001
+- Shared terminology for local homes, execution peers, and portable worktrees
+
+### Changed
+- Replaced the lossy `scp ~/Projects/*` seed example with a repeatable, non-destructive rsync procedure
+- Sync recovery now pauses and inspects one peer session before considering recreation
+- Documented the real `Ignore VCS` tradeoff for Git refs and worktree registrations
+
 ## v3.1.0 — happier-upgrade skill + self-hosted relay cleanup
 
 ### Added
