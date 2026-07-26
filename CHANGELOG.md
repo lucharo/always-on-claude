@@ -7,6 +7,7 @@
 - Canonical portable workspace and Codex worktree paths
 - Live `projects-max` Mutagen configuration and tested seed procedure in ADR 0001
 - Shared terminology for local homes, execution peers, and portable worktrees
+- `mutagen-peer-bootstrap` skill for adding a peer without changing a live hub topology
 
 ### Changed
 - Replaced the lossy `scp ~/Projects/*` seed example with a repeatable, non-destructive rsync procedure
