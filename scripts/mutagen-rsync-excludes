@@ -1,0 +1,8 @@
+#!/bin/bash
+set -euo pipefail
+
+repo_root=$(cd "$(dirname "$0")/.." && pwd)
+config="$repo_root/config/mutagen-projects.yml"
+
+printf '%s\n' '.git'
+ruby -ryaml -e 'puts YAML.load_file(ARGV.fetch(0)).dig("sync", "defaults", "ignore", "paths")' "$config"

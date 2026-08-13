@@ -11,6 +11,7 @@
 
 ### Changed
 - Replaced the lossy `scp ~/Projects/*` seed example with a repeatable, non-destructive rsync procedure
+- Made the Mutagen ignore contract executable and shared with rsync; `hobby/thenewcomputer` now syncs to Max while secrets, worktrees, build output, and machine-local config remain excluded
 - Sync recovery now pauses and inspects one peer session before considering recreation
 - Documented the real `Ignore VCS` tradeoff for Git refs and worktree registrations
 

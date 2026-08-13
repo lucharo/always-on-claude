@@ -219,22 +219,24 @@ brew install mutagen-io/mutagen/mutagen
 mutagen daemon start
 
 # Initial transfer (do this BEFORE enabling sync).
-# Start with the full live ignore list from ADR 0001. If Codex is active,
-# also exclude its volatile turn-diff refs before the first pass:
-printf '%s\n' '.git/refs/codex/turn-diffs' \
-  >> /tmp/projects-sync-excludes.txt
+# Derive rsync exclusions from the same committed source as Mutagen.
+projects_sync_excludes=$(mktemp)
+scripts/mutagen-rsync-excludes > "$projects_sync_excludes"
 
 # Keep the destination, omit --delete, and use the same exclusions as Mutagen.
-rsync -a --stats --exclude-from=/tmp/projects-sync-excludes.txt \
+rsync -a --ignore-existing --stats \
+  --exclude-from="$projects_sync_excludes" \
   /Users/luischavesrodriguez/Projects/ \
   luis@max:/Users/luischavesrodriguez/Projects/
 
-# Run it again and require exit 0 with zero files transferred.
+# Run it again and require exit 0 with zero files transferred. Then remove the
+# temporary excludes file with `rip "$projects_sync_excludes"`.
 
-# Create a peer session pre-paused, using the full live ignore list from ADR 0001.
+# Create a peer session pre-paused from the committed configuration.
 mutagen sync create --name projects-max --paused \
-  --mode two-way-safe --symlink-mode portable \
-  --ignore-vcs --permissions-mode portable \
+  --no-global-configuration \
+  --configuration-file config/mutagen-projects.yml \
+  --permissions-mode portable \
   /Users/luischavesrodriguez/Projects \
   luis@max:/Users/luischavesrodriguez/Projects
 

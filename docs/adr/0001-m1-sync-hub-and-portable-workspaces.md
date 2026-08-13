@@ -48,7 +48,7 @@ after creation, first scan, resume, and flush:
 
 ```text
 Name: projects-max
-Identifier: sync_QUkbGypl1BoOvnhvQhS1wJ2PRqtNK9RsE1lvWZDbjgp
+Identifier: sync_pwQrVAtdHKJzJJ1PIrYrXcq9hYL0lRmgQNdDxBfD4tS
 Configuration:
     Synchronization mode: Two Way Safe
     Hashing algorithm: Default (SHA-1)
@@ -81,6 +81,7 @@ Configuration:
         .turbo
         .parcel-cache
         .wrangler
+        .open-next
         .sass-cache
         .DS_Store
         *.log
@@ -88,6 +89,36 @@ Configuration:
         *.swo
         .env
         .env.local
+        .env*.local
+        .env.prod
+        .env.ops
+        .dev.vars
+        Team.xcconfig
+        .claude/settings.local.json
+        .claude/worktrees
+        .claude/plans
+        .claude/specs
+        .claude/launch.json
+        .omc
+        .omo
+        .codex
+        favicon-tests
+        package-lock.json
+        .dev.log
+        .tnc-dev-server.json
+        .tnc-dev-worker.json
+        next-env.d.ts
+        HANDOFF.md
+        .continues-handoff.md
+        .clerk
+        ios/**/*.xcodeproj/project.xcworkspace
+        ios/**/*.xcodeproj/xcuserdata
+        worker/bun.lock
+        demos
+        docs/plans
+        .artifacts/feedback-triage
+        lib/blog-posts.generated.ts
+        audit
         courses/AWS-SAA-SAAC003-cantrill
         homelab/pihole/etc-pihole
         homelab/pihole/etc-dnsmasq.d
@@ -99,7 +130,6 @@ Configuration:
         *.db-wal
         *.db-shm
         *.db-journal
-        hobby/thenewcomputer
         homelab/ccusage/db
         homelab/yamtrack/db
         *.tsbuildinfo
@@ -120,9 +150,9 @@ Alpha:
         Default file/directory group: Default
     Connected: Yes
     Synchronizable contents:
-        13379 directories
-        91126 files (5.3 GB)
-        28 symbolic links
+        19632 directories
+        116077 files (6.5 GB)
+        113 symbolic links
 Beta:
     URL: luis@max:/Users/luischavesrodriguez/Projects
     Configuration:
@@ -138,9 +168,9 @@ Beta:
         Compression: Default (DEFLATE)
     Connected: Yes
     Synchronizable contents:
-        13379 directories
-        91126 files (5.3 GB)
-        28 symbolic links
+        19632 directories
+        116077 files (6.5 GB)
+        113 symbolic links
 Status: Watching for changes
 ```
 
@@ -154,10 +184,13 @@ The live rollout used this sequence:
 2. Pause `projects` so the first copy starts from a stable project snapshot.
 3. Run a non-destructive `rsync -a` from M1 to Max with the live Mutagen ignore
    list. Do not use `--delete`.
-4. Include existing Git metadata in the seed. Exclude the volatile
-   `.git/refs/codex/turn-diffs` namespace if Codex is active.
+4. Include existing Git metadata in the seed, while deriving the exclusion
+   list from `scripts/mutagen-rsync-excludes` so rsync and Mutagen use the same
+   machine-local boundary.
 5. Run the same rsync again and require exit 0 with zero files transferred.
-6. Create `projects-max` pre-paused with the configuration above.
+6. Create `projects-max` pre-paused with
+   `config/mutagen-projects.yml`, the executable source of the configuration
+   above.
 7. Resume and flush `projects` and `projects-max`.
 8. Require both sessions to report `Watching for changes`.
 9. Test M1-to-Max, M1-to-Arch, and Max-to-M1-to-Arch propagation with temporary
